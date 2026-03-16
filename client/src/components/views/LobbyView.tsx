@@ -28,6 +28,26 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   const topicTimeSecs    = room.topicTimeSecs    ?? 25;
   const questionTimeSecs = room.questionTimeSecs ?? 18;
 
+  // Local slider state — updates instantly on drag without waiting for server round-trip
+  const [localTopicTime,    setLocalTopicTime]    = useState(topicTimeSecs);
+  const [localQuestionTime, setLocalQuestionTime] = useState(questionTimeSecs);
+
+  // Keep local state in sync when server pushes a change (e.g. another host device)
+  const prevTopicRef    = useRef(topicTimeSecs);
+  const prevQuestionRef = useRef(questionTimeSecs);
+  useEffect(() => {
+    if (topicTimeSecs !== prevTopicRef.current) {
+      setLocalTopicTime(topicTimeSecs);
+      prevTopicRef.current = topicTimeSecs;
+    }
+  }, [topicTimeSecs]);
+  useEffect(() => {
+    if (questionTimeSecs !== prevQuestionRef.current) {
+      setLocalQuestionTime(questionTimeSecs);
+      prevQuestionRef.current = questionTimeSecs;
+    }
+  }, [questionTimeSecs]);
+
   const allReady     = room.players.every(p => p.isReady);
   const settingsLocked = allReady;
 
@@ -60,12 +80,20 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   };
 
   const handleTopicTimeChange = (secs: number) => {
-    onUpdateSettings(mode, target, secs, questionTimeSecs);
+    setLocalTopicTime(secs); // instant local update — no socket emit yet
+  };
+
+  const handleTopicTimeCommit = (secs: number) => {
+    onUpdateSettings(mode, target, secs, localQuestionTime);
     playSound('click');
   };
 
   const handleQuestionTimeChange = (secs: number) => {
-    onUpdateSettings(mode, target, topicTimeSecs, secs);
+    setLocalQuestionTime(secs); // instant local update — no socket emit yet
+  };
+
+  const handleQuestionTimeCommit = (secs: number) => {
+    onUpdateSettings(mode, target, localTopicTime, secs);
     playSound('click');
   };
 
@@ -282,16 +310,18 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-white/70 text-sm font-medium">Topic selection</label>
-                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{topicTimeSecs}s</span>
+                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{localTopicTime}s</span>
                     </div>
                     <input
                       type="range"
                       min={TOPIC_TIME_MIN}
                       max={TOPIC_TIME_MAX}
                       step={5}
-                      value={topicTimeSecs}
+                      value={localTopicTime}
                       disabled={settingsLocked}
                       onChange={e => handleTopicTimeChange(Number(e.target.value))}
+                      onMouseUp={e => handleTopicTimeCommit(Number((e.target as HTMLInputElement).value))}
+                      onTouchEnd={e => handleTopicTimeCommit(Number((e.target as HTMLInputElement).value))}
                       className="w-full accent-primary disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <div className="flex justify-between text-white/20 text-xs mt-0.5">
@@ -302,16 +332,18 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-white/70 text-sm font-medium">Answer time</label>
-                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{questionTimeSecs}s</span>
+                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{localQuestionTime}s</span>
                     </div>
                     <input
                       type="range"
                       min={QUESTION_TIME_MIN}
                       max={QUESTION_TIME_MAX}
                       step={5}
-                      value={questionTimeSecs}
+                      value={localQuestionTime}
                       disabled={settingsLocked}
                       onChange={e => handleQuestionTimeChange(Number(e.target.value))}
+                      onMouseUp={e => handleQuestionTimeCommit(Number((e.target as HTMLInputElement).value))}
+                      onTouchEnd={e => handleQuestionTimeCommit(Number((e.target as HTMLInputElement).value))}
                       className="w-full accent-primary disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <div className="flex justify-between text-white/20 text-xs mt-0.5">
@@ -349,7 +381,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
 
             {me.isHost && (
               <>
-                <Button size="lg" variant={canStart ? "success" : "secondary"} className="w-full" disabled={!canStart} onClick={() => { onStart(mode, target, topicTimeSecs, questionTimeSecs); playSound('notification'); }}>
+                <Button size="lg" variant={canStart ? "success" : "secondary"} className="w-full" disabled={!canStart} onClick={() => { onStart(mode, target, localTopicTime, localQuestionTime); playSound('notification'); }}>
                   {canStart ? 'Start Game'
                     : !me.isReady ? 'Ready up to start'
                     : room.players.length < 2 ? 'Need at least 2 players'
