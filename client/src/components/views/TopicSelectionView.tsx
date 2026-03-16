@@ -12,7 +12,7 @@ import { useAudioSystem } from "@/hooks/use-audio";
 interface Props {
   room: Room;
   me: Player;
-  onSelectTopic: (topic: string) => void;
+  onSelectTopic: (topic: string, difficulty?: 'Easy' | 'Medium' | 'Hard') => void;
   error: string | null;
   onClearError: () => void;
   topicRejection: { badTopic: string; reason: string; newTopic: string } | null;
@@ -33,6 +33,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
   const [topic, setTopic] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [difficulty, setDifficulty] = useState<'Easy' | 'Medium' | 'Hard' | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const { playSound } = useAudioSystem();
   const hasFetchedRef = useRef(false);
@@ -69,7 +70,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
     if (!topic.trim() || !isMyTurn || submitting) return;
     setSubmitting(true);
     playSound('click');
-    onSelectTopic(topic.trim());
+    onSelectTopic(topic.trim(), difficulty);
   };
 
   const handleChipClick = (suggestion: string) => {
@@ -238,6 +239,43 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                     </motion.p>
                   )}
                 </AnimatePresence>
+
+                {/* Difficulty selector */}
+                <div className="space-y-2">
+                  <p className="text-xs text-white/40 text-center font-medium uppercase tracking-widest">Difficulty <span className="normal-case text-white/25">(optional)</span></p>
+                  <div className="flex gap-2 justify-center">
+                    {(['Easy', 'Medium', 'Hard'] as const).map((d) => {
+                      const checked = difficulty === d;
+                      const colors = {
+                        Easy:   { ring: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-400', dot: 'bg-emerald-400' },
+                        Medium: { ring: 'border-amber-500/60  bg-amber-500/10  text-amber-400',   dot: 'bg-amber-400'   },
+                        Hard:   { ring: 'border-rose-500/60   bg-rose-500/10   text-rose-400',     dot: 'bg-rose-400'   },
+                      }[d];
+                      return (
+                        <motion.button
+                          key={d}
+                          type="button"
+                          whileTap={{ scale: 0.95 }}
+                          onClick={() => { setDifficulty(checked ? undefined : d); playSound('click'); }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold transition-all select-none
+                            ${checked ? colors.ring : 'border-white/10 bg-white/5 text-white/40 hover:border-white/20 hover:text-white/60'}`}
+                        >
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${checked ? colors.dot : 'bg-white/20'}`} />
+                          {d}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                  {difficulty && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-xs text-center text-white/30"
+                    >
+                      AI will aim for a <span className="text-white/50 font-medium">{difficulty}</span> question
+                    </motion.p>
+                  )}
+                </div>
 
                 <Button
                   type="submit"

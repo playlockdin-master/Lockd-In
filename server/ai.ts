@@ -541,10 +541,11 @@ const MAX_RETRIES      = 2;
 const RETRY_BACKOFF_MS = 600;
 
 export async function generateQuestion(
-  topic:        string,
-  recentAngles: string[],
-  roomId:       string,
-  retries    = MAX_RETRIES,
+  topic:              string,
+  recentAngles:       string[],
+  roomId:             string,
+  retries           = MAX_RETRIES,
+  difficultyOverride?: Difficulty,
 ): Promise<Question> {
   const safeTopic = sanitizeTopic(topic);
 
@@ -560,7 +561,7 @@ export async function generateQuestion(
   }
 
   const specificity = detectSpecificity(safeTopic);
-  const difficulty  = getTargetDifficulty(roomId);
+  const difficulty  = difficultyOverride ?? getTargetDifficulty(roomId);
   const attemptNum  = MAX_RETRIES - retries;
   const temperature = Math.min(BASE_TEMP + attemptNum * 0.1, 0.9);
   const userPrompt  = buildUserPrompt(safeTopic, difficulty, specificity, recentAngles.slice(-8));

@@ -435,7 +435,7 @@ export function setupGameSockets(io: Server) {
       }
     });
 
-    socket.on("selectTopic", async ({ topic }) => {
+    socket.on("selectTopic", async ({ topic, difficulty }) => {
       if (isRateLimited(socket.id, 'selectTopic')) return;
       const room = getRoomBySocketId(socket.id);
       if (!room || room.status !== "topic_selection") return;
@@ -448,12 +448,16 @@ export function setupGameSockets(io: Server) {
         return;
       }
 
+      // Validate optional difficulty override
+      const validDifficulties = ['Easy', 'Medium', 'Hard'];
+      const difficultyOverride = validDifficulties.includes(difficulty) ? difficulty : undefined;
+
       // ── FIX: Lock topic immediately before the async gap ─────────────────
       // Set currentTopic now so any concurrent selectTopic event hitting the
       // guard above sees it and bails out — prevents double question generation.
       room.currentTopic = topic;
       clearRoomTimer(room.code);
-      await proceedToQuestion(room, io, topic);
+      await proceedToQuestion(room, io, topic, difficultyOverride);
     });
 
     socket.on("submitAnswer", ({ answerIndex }) => {
@@ -862,7 +866,7 @@ function startTopicSelection(room: Room, io: Server, incrementRound = true) {
 // Topic fallback now uses the shared TOPIC_DATASET from ai.ts —
 // single source of truth for suggestions, auto-pick, and NO_TRIVIA replacement.
 
-async function proceedToQuestion(room: Room, io: Server, topic: string) {
+async function proceedToQuestion(room: Room, io: Server, topic: string, difficultyOverride?: string) {
   // Pre-flight: verify the room is still alive before spending an AI call.
   // The timer closure may hold a stale ref if all players left after the timer was set.
   const preCheck = rooms.get(room.code);
@@ -884,7 +888,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string) {
   io.to(room.code).emit("gameState", serializeRoom(room));
 
   try {
-    const question = await generateQuestion(topic, room.usedTopics, room.code);
+    const question = await generateQuestion(topic, room.usedTopics, room.code, undefined, difficultyOverride as any);
 
     // ── FIX: Full stale-room check after async gap ────────────────────────
     const liveRoom = rooms.get(room.code);

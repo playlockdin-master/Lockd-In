@@ -215,10 +215,10 @@ export function useSocket() {
     socketRef.current.emit('startGame', { mode, target });
   }, []);
 
-  const selectTopic = useCallback((topic: string) => {
+  const selectTopic = useCallback((topic: string, difficulty?: 'Easy' | 'Medium' | 'Hard') => {
     if (!socketRef.current) return;
-    track('topic_selected', { topic });
-    socketRef.current.emit('selectTopic', { topic });
+    track('topic_selected', { topic, ...(difficulty ? { difficulty } : {}) });
+    socketRef.current.emit('selectTopic', { topic, ...(difficulty ? { difficulty } : {}) });
   }, []);
 
   const submitAnswer = useCallback((answerIndex: number) => {
