@@ -1,4 +1,4 @@
-import { Room, Player, QUESTION_TIME_SECONDS } from "@shared/schema";
+import { Room, Player } from "@shared/schema";
 import { Card } from "../Card";
 import { Timer } from "../Timer";
 import { Avatar } from "../Avatar";
@@ -178,7 +178,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
             : <><TrendingDown className="w-3 h-3" />#{myRank}</>}
         </span>
         <div className="ml-auto shrink-0">
-          <Timer deadline={room.questionDeadline!} totalTime={QUESTION_TIME_SECONDS} />
+          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 18} />
         </div>
       </div>
 

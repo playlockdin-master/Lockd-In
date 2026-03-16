@@ -6,7 +6,7 @@ function ts() { return new Date().toISOString(); }
 function log(msg: string)   { console.log( `[INFO]  ${ts()} [game] ${msg}`); }
 function warn(msg: string)  { console.warn( `[WARN]  ${ts()} [game] ${msg}`); }
 function err(msg: string)   { console.error(`[ERROR] ${ts()} [game] ${msg}`); }
-import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS } from "@shared/schema";
+import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX } from "@shared/schema";
 import { generateQuestion, generateTopicSuggestions, TOPIC_DATASET } from "./ai";
 
 // ── Per-socket rate limiter ──────────────────────────────────────────────────
@@ -161,8 +161,10 @@ setInterval(() => {
 
 // ── Timer helpers ───────────────────────────────────────────────────────────
 
-const ROUND_TOPIC_TIME    = TOPIC_TIME_SECONDS    * 1000;
-const ROUND_QUESTION_TIME = QUESTION_TIME_SECONDS * 1000;
+// Per-room timers — read from the Room object so host settings are honoured.
+// Falls back to the shared defaults if the field is missing (e.g. legacy rooms).
+function topicTimeMs(room: Room):    number { return (room.topicTimeSecs    ?? TOPIC_TIME_SECONDS)    * 1000; }
+function questionTimeMs(room: Room): number { return (room.questionTimeSecs ?? QUESTION_TIME_SECONDS) * 1000; }
 const ROUND_RESULTS_TIME  = 8000;
 
 function clearRoomTimer(code: string) {
@@ -229,6 +231,8 @@ export function setupGameSockets(io: Server) {
           status: "lobby",
           mode: "round",
           target: 10,
+          topicTimeSecs: TOPIC_TIME_SECONDS,
+          questionTimeSecs: QUESTION_TIME_SECONDS,
           currentRound: 0,
           usedTopics: [],
           answers: {},
@@ -318,7 +322,7 @@ export function setupGameSockets(io: Server) {
       // ── FIX: Restore topic selector if they were the one who left ─────────
       if (ghost?.wasTopicSelector && room.status === 'topic_selection') {
         room.topicSelectorId = socket.id;
-        room.topicDeadline = Date.now() + ROUND_TOPIC_TIME;
+        room.topicDeadline = Date.now() + topicTimeMs(room);
         clearRoomTimer(code);
         setRoomTimer(code, () => {
           const liveRoomAtFire = rooms.get(code);
@@ -328,7 +332,7 @@ export function setupGameSockets(io: Server) {
           ];
           const randomTopic = fallbackTopics[Math.floor(Math.random() * fallbackTopics.length)];
           proceedToQuestion(liveRoomAtFire, io, randomTopic);
-        }, ROUND_TOPIC_TIME);
+        }, topicTimeMs(room));
       }
 
       // ── FIX: Handle joining during 'question' phase ───────────────────────
@@ -379,7 +383,7 @@ export function setupGameSockets(io: Server) {
       }
     });
 
-    socket.on("updateSettings", ({ mode, target }) => {
+    socket.on("updateSettings", ({ mode, target, topicTimeSecs, questionTimeSecs }) => {
       if (isRateLimited(socket.id, 'updateSettings')) return;
       const room = getRoomBySocketId(socket.id);
       if (!room || room.status !== "lobby") return;
@@ -393,10 +397,17 @@ export function setupGameSockets(io: Server) {
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
+      // Validate and apply timer overrides if provided
+      if (typeof topicTimeSecs === 'number' && topicTimeSecs >= TOPIC_TIME_MIN && topicTimeSecs <= TOPIC_TIME_MAX) {
+        room.topicTimeSecs = topicTimeSecs;
+      }
+      if (typeof questionTimeSecs === 'number' && questionTimeSecs >= QUESTION_TIME_MIN && questionTimeSecs <= QUESTION_TIME_MAX) {
+        room.questionTimeSecs = questionTimeSecs;
+      }
       io.to(room.code).emit("gameState", serializeRoom(room));
     });
 
-    socket.on("startGame", ({ mode, target }) => {
+    socket.on("startGame", ({ mode, target, topicTimeSecs, questionTimeSecs }) => {
       if (isRateLimited(socket.id, 'startGame')) return;
       const room = getRoomBySocketId(socket.id);
       if (!room) return;
@@ -411,6 +422,12 @@ export function setupGameSockets(io: Server) {
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
+      if (typeof topicTimeSecs === 'number' && topicTimeSecs >= TOPIC_TIME_MIN && topicTimeSecs <= TOPIC_TIME_MAX) {
+        room.topicTimeSecs = topicTimeSecs;
+      }
+      if (typeof questionTimeSecs === 'number' && questionTimeSecs >= QUESTION_TIME_MIN && questionTimeSecs <= QUESTION_TIME_MAX) {
+        room.questionTimeSecs = questionTimeSecs;
+      }
       room.currentRound = 0;
       room.players.forEach((p) => {
         p.score = 0;
@@ -650,6 +667,8 @@ function serializeRoom(room: Room): object {
     status: room.status,
     mode: room.mode,
     target: room.target,
+    topicTimeSecs: room.topicTimeSecs ?? TOPIC_TIME_SECONDS,
+    questionTimeSecs: room.questionTimeSecs ?? QUESTION_TIME_SECONDS,
     currentRound: room.currentRound,
     usedTopics: [...room.usedTopics],
     currentTopic: room.currentTopic,
@@ -847,7 +866,7 @@ function startTopicSelection(room: Room, io: Server, incrementRound = true) {
   }
 
   room.topicSelectorId = selectorId;
-  room.topicDeadline = Date.now() + ROUND_TOPIC_TIME;
+  room.topicDeadline = Date.now() + topicTimeMs(room);
 
   io.to(room.code).emit("gameState", serializeRoom(room));
 
@@ -860,7 +879,7 @@ function startTopicSelection(room: Room, io: Server, incrementRound = true) {
     const pool = available.length > 0 ? available : TOPIC_DATASET;
     const randomTopic = pool[Math.floor(Math.random() * pool.length)];
     proceedToQuestion(liveRoomAtFire, io, randomTopic);
-  }, ROUND_TOPIC_TIME);
+  }, topicTimeMs(room));
 }
 
 // Topic fallback now uses the shared TOPIC_DATASET from ai.ts —
@@ -907,7 +926,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
     // Write to liveRoom (the authoritative reference) — not the stale local `room` ref
     liveRoom.currentQuestion = question;
-    liveRoom.questionDeadline = Date.now() + ROUND_QUESTION_TIME;
+    liveRoom.questionDeadline = Date.now() + questionTimeMs(liveRoom);
     // Use the AI's canonical topic label if provided (corrects typos & abbreviations like "ch3ss" → "Chess")
     if (question.canonicalTopic?.trim()) {
       liveRoom.currentTopic = question.canonicalTopic.trim();
@@ -920,7 +939,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
     setRoomTimer(room.code, () => {
       proceedToResults(liveRoom, io);
-    }, ROUND_QUESTION_TIME);
+    }, questionTimeMs(liveRoom));
 
   } catch (err: any) {
     const liveRoom = rooms.get(room.code);
@@ -964,13 +983,13 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
         // Write to afterGen (live ref), not stale `room` closure
         afterGen.currentQuestion = question;
-        afterGen.questionDeadline = Date.now() + ROUND_QUESTION_TIME;
+        afterGen.questionDeadline = Date.now() + questionTimeMs(afterGen);
         if (question.canonicalTopic?.trim()) {
           afterGen.currentTopic = question.canonicalTopic.trim();
         }
         afterGen.roundPlayerIds = afterGen.players.map(p => p.id);
         io.to(room.code).emit("gameState", serializeRoom(afterGen));
-        setRoomTimer(room.code, () => { proceedToResults(afterGen, io); }, ROUND_QUESTION_TIME);
+        setRoomTimer(room.code, () => { proceedToResults(afterGen, io); }, questionTimeMs(afterGen));
       } catch (innerErr) {
         err("Failed to generate fallback question:", innerErr);
         // ── Yellow #1 fix: re-fetch live ref before passing to startTopicSelection ──
@@ -1043,7 +1062,7 @@ function proceedToResults(room: Room, io: Server) {
       const base = Math.floor(75 * diffMultiplier);
 
       // Speed bonus: up to 40pts, scales with time remaining
-      const timeMultiplier = Math.max(0, answer.timeTaken / ROUND_QUESTION_TIME);
+      const timeMultiplier = Math.max(0, answer.timeTaken / questionTimeMs(room));
       const speedBonus = Math.floor(40 * timeMultiplier);
 
       // Streak bonus: compounds the longer your streak goes

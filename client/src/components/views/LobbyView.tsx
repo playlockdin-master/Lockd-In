@@ -1,4 +1,4 @@
-import { Room, Player } from "@shared/schema";
+import { Room, Player, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX } from "@shared/schema";
 import { Card } from "../Card";
 import { Button } from "../Button";
 import { Avatar, AvatarPicker } from "../Avatar";
@@ -11,8 +11,8 @@ interface Props {
   room: Room;
   me: Player;
   onReady: (isReady: boolean) => void;
-  onStart: (mode: 'round' | 'score', target: number) => void;
-  onUpdateSettings: (mode: 'round' | 'score', target: number) => void;
+  onStart: (mode: 'round' | 'score', target: number, topicTimeSecs: number, questionTimeSecs: number) => void;
+  onUpdateSettings: (mode: 'round' | 'score', target: number, topicTimeSecs: number, questionTimeSecs: number) => void;
   onUpdateAvatar?: (avatarId: string) => void;
   onKickPlayer?: (targetId: string) => void;
 }
@@ -24,6 +24,9 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
 
   const mode   = room.mode;
   const target = room.target;
+  // Mirror the server's values so sliders stay in sync for all players
+  const topicTimeSecs    = room.topicTimeSecs    ?? 25;
+  const questionTimeSecs = room.questionTimeSecs ?? 18;
 
   const allReady     = room.players.every(p => p.isReady);
   const settingsLocked = allReady;
@@ -47,12 +50,22 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
     : undefined;
 
   const handleModeChange = (newMode: 'round' | 'score') => {
-    onUpdateSettings(newMode, newMode === 'round' ? 10 : 1000);
+    onUpdateSettings(newMode, newMode === 'round' ? 10 : 1000, topicTimeSecs, questionTimeSecs);
     playSound('click');
   };
 
   const handleTargetChange = (newTarget: number) => {
-    onUpdateSettings(mode, newTarget);
+    onUpdateSettings(mode, newTarget, topicTimeSecs, questionTimeSecs);
+    playSound('click');
+  };
+
+  const handleTopicTimeChange = (secs: number) => {
+    onUpdateSettings(mode, target, secs, questionTimeSecs);
+    playSound('click');
+  };
+
+  const handleQuestionTimeChange = (secs: number) => {
+    onUpdateSettings(mode, target, topicTimeSecs, secs);
     playSound('click');
   };
 
@@ -261,13 +274,62 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                     )}
                   </div>
                 </div>
+
+                {/* Timer settings */}
+                <div className="space-y-4 pt-2 border-t border-white/10">
+                  <p className="text-white/40 text-xs uppercase tracking-widest font-medium">Timers</p>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-white/70 text-sm font-medium">Topic selection</label>
+                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{topicTimeSecs}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={TOPIC_TIME_MIN}
+                      max={TOPIC_TIME_MAX}
+                      step={5}
+                      value={topicTimeSecs}
+                      disabled={settingsLocked}
+                      onChange={e => handleTopicTimeChange(Number(e.target.value))}
+                      className="w-full accent-primary disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                    <div className="flex justify-between text-white/20 text-xs mt-0.5">
+                      <span>{TOPIC_TIME_MIN}s</span><span>{TOPIC_TIME_MAX}s</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-white/70 text-sm font-medium">Answer time</label>
+                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{questionTimeSecs}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={QUESTION_TIME_MIN}
+                      max={QUESTION_TIME_MAX}
+                      step={5}
+                      value={questionTimeSecs}
+                      disabled={settingsLocked}
+                      onChange={e => handleQuestionTimeChange(Number(e.target.value))}
+                      className="w-full accent-primary disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                    <div className="flex justify-between text-white/20 text-xs mt-0.5">
+                      <span>{QUESTION_TIME_MIN}s</span><span>{QUESTION_TIME_MAX}s</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-40 text-center space-y-4">
+              <div className="flex flex-col items-center justify-center text-center space-y-4">
                 <p className="text-white/70">Waiting for host to configure game...</p>
-                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10 w-full space-y-1">
                   <p className="text-white font-medium text-lg">
                     {room.mode === 'round' ? `${room.target} Rounds` : `First to ${room.target} Pts`}
+                  </p>
+                  <p className="text-white/40 text-sm">
+                    Topic: {topicTimeSecs}s · Answer: {questionTimeSecs}s
                   </p>
                 </div>
               </div>
@@ -287,7 +349,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
 
             {me.isHost && (
               <>
-                <Button size="lg" variant={canStart ? "success" : "secondary"} className="w-full" disabled={!canStart} onClick={() => { onStart(mode, target); playSound('notification'); }}>
+                <Button size="lg" variant={canStart ? "success" : "secondary"} className="w-full" disabled={!canStart} onClick={() => { onStart(mode, target, topicTimeSecs, questionTimeSecs); playSound('notification'); }}>
                   {canStart ? 'Start Game'
                     : !me.isReady ? 'Ready up to start'
                     : room.players.length < 2 ? 'Need at least 2 players'

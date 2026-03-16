@@ -1,4 +1,4 @@
-import { Room, Player, TOPIC_TIME_SECONDS } from "@shared/schema";
+import { Room, Player } from "@shared/schema";
 import { Card } from "../Card";
 import { Button } from "../Button";
 import { Input } from "../Input";
@@ -109,7 +109,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
 
       {!isLoadingQuestion && (
         <div className="mb-4 md:mb-8">
-          <Timer deadline={room.topicDeadline!} totalTime={TOPIC_TIME_SECONDS} />
+          <Timer deadline={room.topicDeadline!} totalTime={room.topicTimeSecs ?? 25} />
         </div>
       )}
 

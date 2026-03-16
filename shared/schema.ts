@@ -40,9 +40,14 @@ export interface Question {
 
 export type GameStateStatus = 'lobby' | 'topic_selection' | 'question' | 'results' | 'ended';
 
-// Shared timer durations — single source of truth for server and client
+// Shared timer durations — defaults and limits
 export const TOPIC_TIME_SECONDS = 25;
 export const QUESTION_TIME_SECONDS = 18;
+
+export const TOPIC_TIME_MIN = 25;
+export const TOPIC_TIME_MAX = 60;
+export const QUESTION_TIME_MIN = 15;
+export const QUESTION_TIME_MAX = 60;
 
 export interface Player {
   id: string; // socket id
@@ -64,6 +69,8 @@ export interface Room {
   status: GameStateStatus;
   mode: 'round' | 'score';
   target: number; // e.g. 10 or 20 for round mode, 1000 or 2000 for score mode
+  topicTimeSecs: number;    // host-configured topic selection timer (25–60s)
+  questionTimeSecs: number; // host-configured answer timer (15–60s)
   currentRound: number;
   usedTopics: string[];
   currentTopic?: string;
