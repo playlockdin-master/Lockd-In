@@ -7,7 +7,7 @@ function log(msg: string)   { console.log( `[INFO]  ${ts()} [game] ${msg}`); }
 function warn(msg: string)  { console.warn( `[WARN]  ${ts()} [game] ${msg}`); }
 function err(msg: string)   { console.error(`[ERROR] ${ts()} [game] ${msg}`); }
 import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX } from "@shared/schema";
-import { generateQuestion, generateTopicSuggestions, TOPIC_DATASET, clearRoomCache } from "./ai";
+import { generateQuestion, generateTopicSuggestions, suggestSimilarTopic, TOPIC_DATASET, clearRoomCache } from "./ai";
 
 // ── Per-socket rate limiter ──────────────────────────────────────────────────
 // Tracks event counts per socket within a rolling 10-second window.
@@ -1028,26 +1028,36 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     if (!liveRoom || liveRoom.currentRound !== roundSnapshot) return;
 
     if (err?.code === "NO_TRIVIA") {
-      // ── Bad topic: tell the room, pick a random replacement ──────────────
+      // ── Bad topic: ask AI for a similar topic, fall back to random ───────
       warn(`NO_TRIVIA for topic "${topic}": ${err.message}`);
 
       const reason = err.message || "That topic can't be turned into a trivia question.";
-      const usedFallbacks = room.usedTopics;
-      const used = new Set(usedFallbacks.map((t: string) => t.toLowerCase()));
-      const available = TOPIC_DATASET.filter((t: string) => !used.has(t.toLowerCase()));
-      const pool = available.length > 0 ? available : TOPIC_DATASET;
-      const randomTopic = pool[Math.floor(Math.random() * pool.length)];
 
-      // Notify all players with the rejection reason
+      // Try to get a similar topic from the AI first
+      let replacementTopic: string;
+      try {
+        replacementTopic = await suggestSimilarTopic(topic, room.usedTopics);
+        log(`[similar-topic] "${topic}" → "${replacementTopic}"`);
+      } catch {
+        // AI suggestion failed — fall back to random from dataset
+        const usedFallbacks = room.usedTopics;
+        const used = new Set(usedFallbacks.map((t: string) => t.toLowerCase()));
+        const available = TOPIC_DATASET.filter((t: string) => !used.has(t.toLowerCase()));
+        const pool = available.length > 0 ? available : TOPIC_DATASET;
+        replacementTopic = pool[Math.floor(Math.random() * pool.length)];
+        log(`[similar-topic] AI failed, using random: "${replacementTopic}"`);
+      }
+
+      // Notify all players with the rejection reason and the new topic
       io.to(room.code).emit("topicRejected", {
         badTopic: topic,
         reason,
-        newTopic: randomTopic,
+        newTopic: replacementTopic,
       });
 
-      // Reset topic lock and proceed with the random replacement
-      room.currentTopic = randomTopic;
-      room.usedTopics.push(randomTopic);
+      // Reset topic lock and proceed with the replacement
+      room.currentTopic = replacementTopic;
+      room.usedTopics.push(replacementTopic);
 
       // Short pause so players can read the message, then generate
       await new Promise(res => setTimeout(res, 2500));
@@ -1059,7 +1069,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
       io.to(room.code).emit("gameState", serializeRoom(room));
 
       try {
-        const question = await generateQuestion(randomTopic, room.usedTopics, room.code, undefined, undefined, room.askedQuestions ?? []);
+        const question = await generateQuestion(replacementTopic, room.usedTopics, room.code, undefined, undefined, room.askedQuestions ?? []);
         const afterGen = rooms.get(room.code);
         if (!afterGen || afterGen.currentRound !== roundSnapshot) return;
 

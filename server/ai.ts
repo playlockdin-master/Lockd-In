@@ -598,6 +598,51 @@ function getRandomFallback(): Question {
   return FALLBACK_POOL[Math.floor(Math.random() * FALLBACK_POOL.length)];
 }
 
+
+// ---------------------------------------------------------------------------
+// SIMILAR TOPIC SUGGESTER
+// When a topic fails NO_TRIVIA, ask the AI for a closely related alternative
+// instead of jumping to a completely random topic.
+// Uses the smallest/fastest provider available — this is a cheap call.
+// ---------------------------------------------------------------------------
+
+export async function suggestSimilarTopic(
+  badTopic:   string,
+  usedTopics: string[],
+): Promise<string> {
+  const used = usedTopics.length
+    ? `Already used: ${usedTopics.slice(-10).join(", ")}. Do not suggest these.`
+    : "";
+
+  const messages = [
+    {
+      role: "system",
+      content: "You suggest alternative trivia topics. Reply with ONE topic name only — no punctuation, no explanation, no JSON. Just the topic name.",
+    },
+    {
+      role: "user",
+      content: `The topic "${badTopic}" can't be used for trivia. Suggest ONE closely related topic that IS good for competitive trivia. ${used} Reply with the topic name only.`,
+    },
+  ];
+
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const raw = await callWithFallback(messages, 20, 0.7, controller.signal);
+    clearTimeout(timeoutId);
+    const suggested = raw.trim().replace(/["""''.,!?]/g, "").trim();
+    // Sanity check — must be a short topic name, not a sentence
+    if (suggested && suggested.length >= 2 && suggested.length <= 60 && !suggested.includes("\n")) {
+      return suggested;
+    }
+    throw new Error("Invalid suggestion format");
+  } catch {
+    clearTimeout(timeoutId);
+    throw new Error("SUGGEST_FAILED");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // TOPIC SUGGESTIONS — pure static dataset, zero API cost, instant.
 // 200 curated topics across broad interest areas.
