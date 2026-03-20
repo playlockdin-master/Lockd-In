@@ -441,22 +441,6 @@ function sanitizeTopic(topic: string): string {
     .slice(0, 80);
 }
 
-// ---------------------------------------------------------------------------
-// PRE-FLIGHT TOPIC VALIDATOR
-// ---------------------------------------------------------------------------
-
-const GIBBERISH_RE = /^[^aeiouAEIOU]{6,}$/;
-const NUMERIC_RE   = /^[\d\s\W]+$/;
-
-function isGibberish(topic: string): boolean {
-  if (!topic || topic.length < 2) return true;
-  if (NUMERIC_RE.test(topic) || GIBBERISH_RE.test(topic)) return true;
-  const letters = topic.replace(/[^a-zA-Z]/g, "");
-  if (letters.length < 3) return true;
-  const vowels = letters.replace(/[^aeiouAEIOU]/g, "").length;
-  return (1 - vowels / letters.length) > 0.85;
-}
-
 function makeNoTriviaError(reason: string): Error {
   const err    = new Error(reason) as any;
   err.code     = "NO_TRIVIA";
@@ -662,9 +646,6 @@ export async function generateQuestion(
   difficultyOverride?: Difficulty,
 ): Promise<Question> {
   const safeTopic = sanitizeTopic(topic);
-
-  if (isGibberish(safeTopic))
-    throw makeNoTriviaError(`"${topic}" doesn't seem to have enough to work with. Try something like "Physics", "Space Exploration", "Climate Change", or "World History".`);
 
   // Cache hit — serve instantly, zero API cost
   const cached = getCached(safeTopic, roomId);
