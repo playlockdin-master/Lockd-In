@@ -84,4 +84,5 @@ export interface Room {
   fastestPlayerId?: string; // ID of the player who answered correctly first
   playAgainIds?: string[]; // players who pressed Play Again during 'ended' state
   viewingResultsIds?: string[]; // players still on podium screen, haven't clicked play again
+  askedQuestions?: string[]; // fingerprints of questions asked this game — used for deduplication
 }

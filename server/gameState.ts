@@ -7,7 +7,7 @@ function log(msg: string)   { console.log( `[INFO]  ${ts()} [game] ${msg}`); }
 function warn(msg: string)  { console.warn( `[WARN]  ${ts()} [game] ${msg}`); }
 function err(msg: string)   { console.error(`[ERROR] ${ts()} [game] ${msg}`); }
 import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX } from "@shared/schema";
-import { generateQuestion, generateTopicSuggestions, TOPIC_DATASET } from "./ai";
+import { generateQuestion, generateTopicSuggestions, TOPIC_DATASET, clearRoomCache } from "./ai";
 
 // ── Per-socket rate limiter ──────────────────────────────────────────────────
 // Tracks event counts per socket within a rolling 10-second window.
@@ -235,6 +235,7 @@ export function setupGameSockets(io: Server) {
           questionTimeSecs: QUESTION_TIME_SECONDS,
           currentRound: 0,
           usedTopics: [],
+          askedQuestions: [],
           answers: {},
         };
         rooms.set(code, room);
@@ -636,7 +637,11 @@ function resetRoomToLobby(room: Room, io: Server) {
 
   room.status = 'lobby';
   room.currentRound = 0;
+  // Clear cached questions and difficulty history for this room so the
+  // next game generates fresh questions instead of replaying old ones
+  clearRoomCache(room.code, room.usedTopics);
   room.usedTopics = [];
+  room.askedQuestions = [];
   room.answers = {};
   delete room.currentQuestion;
   delete room.currentTopic;
@@ -671,6 +676,7 @@ function serializeRoom(room: Room): object {
     questionTimeSecs: room.questionTimeSecs ?? QUESTION_TIME_SECONDS,
     currentRound: room.currentRound,
     usedTopics: [...room.usedTopics],
+    askedQuestions: [...(room.askedQuestions ?? [])],
     currentTopic: room.currentTopic,
     currentQuestion: room.currentQuestion
       ? { ...room.currentQuestion, options: [...room.currentQuestion.options] }
@@ -907,7 +913,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
   io.to(room.code).emit("gameState", serializeRoom(room));
 
   try {
-    const question = await generateQuestion(topic, room.usedTopics, room.code, undefined, difficultyOverride as any);
+    const question = await generateQuestion(topic, room.usedTopics, room.code, undefined, difficultyOverride as any, room.askedQuestions ?? []);
 
     // ── FIX: Full stale-room check after async gap ────────────────────────
     const liveRoom = rooms.get(room.code);
@@ -927,6 +933,11 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     // Write to liveRoom (the authoritative reference) — not the stale local `room` ref
     liveRoom.currentQuestion = question;
     liveRoom.questionDeadline = Date.now() + questionTimeMs(liveRoom);
+    // Track asked question text for within-game deduplication
+    if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
+    liveRoom.askedQuestions.push(question.text);
+    // Cap at 50 to prevent unbounded growth in long score-mode games
+    if (liveRoom.askedQuestions.length > 50) liveRoom.askedQuestions.shift();
     // Use the AI's canonical topic label if provided (corrects typos & abbreviations like "ch3ss" → "Chess")
     if (question.canonicalTopic?.trim()) {
       liveRoom.currentTopic = question.canonicalTopic.trim();
@@ -977,7 +988,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
       io.to(room.code).emit("gameState", serializeRoom(room));
 
       try {
-        const question = await generateQuestion(randomTopic, room.usedTopics, room.code);
+        const question = await generateQuestion(randomTopic, room.usedTopics, room.code, undefined, undefined, room.askedQuestions ?? []);
         const afterGen = rooms.get(room.code);
         if (!afterGen || afterGen.currentRound !== roundSnapshot) return;
 
