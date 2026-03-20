@@ -61,6 +61,7 @@ export interface Player {
   lastAnswerCorrect?: boolean | null; // true = correct, false = wrong, null = timed out
   lastPoints?: number;
   reaction?: string;
+  isReconnecting?: boolean; // true during the 10s grace window after disconnect
 }
 
 export interface Room {

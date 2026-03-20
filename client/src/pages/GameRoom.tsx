@@ -139,10 +139,10 @@ export default function GameRoom() {
 
   const {
     room, me, isConnected, isReconnecting, connectTimeout, error, topicRejection, topicSuggestions, loadingSuggestions,
-    serverRestarted, roomExpired,
+    serverRestarted, roomExpired, wasKicked, kickMessage,
     joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings,
     updateAvatar, resetGame, playAgain, clearError, clearTopicRejection, requestTopicSuggestions,
-    clearServerRestarted, clearRoomExpired, kickPlayer,
+    clearServerRestarted, clearRoomExpired, clearWasKicked, kickPlayer,
   } = useSocket();
 
   const handleExit = useCallback(() => {
@@ -215,6 +215,25 @@ export default function GameRoom() {
   }
 
   const selectorName = room?.players.find(p => p.id === room.topicSelectorId)?.name ?? '';
+
+  // Kicked by host — show a dedicated screen instead of the join modal
+  if (wasKicked) {
+    return (
+      <div className="flex items-center justify-center p-4" style={{ minHeight: '100dvh' }}>
+        <ParticleBackground />
+        <div className="relative z-10 glass-panel p-8 rounded-3xl text-center max-w-md w-full">
+          <div className="text-4xl mb-3">🚫</div>
+          <h2 className="text-2xl font-bold text-white mb-3">You were removed</h2>
+          <p className="text-white/60 mb-6">
+            {kickMessage || 'The host removed you from the game.'}
+          </p>
+          <Button onClick={() => { clearWasKicked(); setLocation('/'); }} className="w-full">
+            Back to Home
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Fix #2: server restarted and wiped this room — friendlier than a generic error
   if (serverRestarted) {

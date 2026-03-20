@@ -84,6 +84,13 @@ const playerJoinOrder = new Map<string, string[]>();
 // O(1) socket → room code index — avoids linear scan on every event
 const socketRoomMap = new Map<string, string>();
 
+// Reconnect grace timers — keyed by "roomCode:playerName"
+// When a player disconnects, we give them 10s before doing real disconnect logic.
+// If they rejoin in time, we cancel the timer and nobody notices they left.
+const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const RECONNECT_GRACE_MS = 10_000; // 10 seconds to reconnect before treating as real disconnect
+
 // Ghost store — preserves score/streak/host for players who disconnect
 // so they can rejoin within 2 minutes and get everything back
 interface GhostPlayer {
@@ -369,6 +376,17 @@ export function setupGameSockets(io: Server) {
         }
       }
 
+      // Cancel grace timer if they're rejoining — clears isReconnecting flag
+      const graceKey = `${code}:${cleanName.toLowerCase()}`;
+      const graceTimer = reconnectTimers.get(graceKey);
+      if (graceTimer) {
+        clearTimeout(graceTimer);
+        reconnectTimers.delete(graceKey);
+      }
+      // Clear the reconnecting flag on the player object
+      const rejoiningPlayer = room.players.find(p => p.id === socket.id);
+      if (rejoiningPlayer) rejoiningPlayer.isReconnecting = false;
+
       io.to(code).emit("gameState", serializeRoom(room));
       log(`${cleanName} ${ghost ? 're' : ''}joined ${code}${ghost ? ` (restored ${ghost.score}pts, streak ${ghost.streak})` : ''}`);
     });
@@ -614,7 +632,40 @@ export function setupGameSockets(io: Server) {
     socket.on("disconnect", () => {
       log(`Socket disconnected: ${socket.id}`);
       cleanupRateLimit(socket.id);
-      handleDisconnect(socket.id, io);
+
+      // Grace period: mark player as reconnecting instead of removing immediately.
+      // This prevents the round from advancing without them on a brief refresh/app switch.
+      const roomCode = socketRoomMap.get(socket.id);
+      const room = roomCode ? rooms.get(roomCode) : null;
+      const player = room ? room.players.find(p => p.id === socket.id) : null;
+
+      if (player && room && room.status !== 'lobby' && room.status !== 'ended') {
+        // Mark as reconnecting — client shows a "reconnecting" indicator
+        player.isReconnecting = true;
+        io.to(roomCode!).emit("gameState", serializeRoom(room));
+
+        const graceKey = `${roomCode}:${player.name.toLowerCase()}`;
+        // Cancel any existing grace timer for this player
+        const existing = reconnectTimers.get(graceKey);
+        if (existing) clearTimeout(existing);
+
+        reconnectTimers.set(graceKey, setTimeout(() => {
+          reconnectTimers.delete(graceKey);
+          // Check if player is still marked reconnecting (i.e. hasn't rejoined)
+          const liveRoom = roomCode ? rooms.get(roomCode) : null;
+          if (!liveRoom) return;
+          const stillGhost = liveRoom.players.find(
+            p => p.name.toLowerCase() === player.name.toLowerCase() && p.isReconnecting
+          );
+          if (stillGhost) {
+            log(`Grace period expired for ${player.name} in ${roomCode} — processing disconnect`);
+            handleDisconnect(stillGhost.id, io);
+          }
+        }, RECONNECT_GRACE_MS));
+      } else {
+        // In lobby or ended state — disconnect immediately, no grace needed
+        handleDisconnect(socket.id, io);
+      }
     });
 
     // Intentional leave — same cleanup as disconnect but no ghost saved (player chose to leave)
@@ -730,6 +781,16 @@ function handleDisconnect(socketId: string, io: Server, saveGhostOnLeave = true)
   const playerIndex = room.players.findIndex((p) => p.id === socketId);
   if (playerIndex === -1) return; // Already removed (shouldn't happen, but safe)
 
+  // If this player is still marked isReconnecting it means the grace timer hasn't
+  // fired yet and we're being called from an explicit leaveRoom — clear the grace timer
+  const leavingName = room.players[playerIndex].name.toLowerCase();
+  const graceKey = `${code}:${leavingName}`;
+  const graceTimer = reconnectTimers.get(graceKey);
+  if (graceTimer) {
+    clearTimeout(graceTimer);
+    reconnectTimers.delete(graceKey);
+  }
+
   {
     const leavingPlayer = room.players[playerIndex];
     const wasSelector = room.topicSelectorId === socketId;
@@ -764,9 +825,19 @@ function handleDisconnect(socketId: string, io: Server, saveGhostOnLeave = true)
     delete room.answers[socketId];
 
     if (room.players.length === 0) {
+      // Don't delete immediately — give a 60s grace period so a refresh or
+      // brief app switch (which looks like a disconnect) can rejoin the same room.
+      // The ghost player is already saved above and will restore their state on rejoin.
+      // If nobody rejoins within 60s the room is cleaned up normally.
       clearRoomTimer(code);
-      rooms.delete(code);
-      playerJoinOrder.delete(code);
+      setRoomTimer(code, () => {
+        const stillEmpty = rooms.get(code);
+        if (stillEmpty && stillEmpty.players.length === 0) {
+          rooms.delete(code);
+          playerJoinOrder.delete(code);
+          roomTimers.delete(code);
+        }
+      }, 60_000);
       return;
     }
 

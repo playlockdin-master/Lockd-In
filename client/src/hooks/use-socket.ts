@@ -28,6 +28,9 @@ export interface GameState {
   roomExpired: boolean;
   // Fix #5b: true while socket is disconnected and attempting to reconnect
   isReconnecting: boolean;
+  // true when host kicked this player — shows a dedicated screen instead of re-join modal
+  wasKicked: boolean;
+  kickMessage: string | null;
   topicRejection: { badTopic: string; reason: string; newTopic: string } | null;
   topicSuggestions: string[];
   loadingSuggestions: boolean;
@@ -42,6 +45,8 @@ export function useSocket() {
     serverRestarted: false,
     roomExpired: false,
     isReconnecting: false,
+    wasKicked: false,
+    kickMessage: null,
     topicRejection: null,
     topicSuggestions: [],
     loadingSuggestions: false,
@@ -77,8 +82,10 @@ export function useSocket() {
   useEffect(() => {
     const clearIdentity_socket = () => clearIdentityRef.current();
     const newSocket = io({
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 10,       // more attempts for mobile network switches
+      reconnectionDelay: 500,         // start retrying faster (was 1000ms)
+      reconnectionDelayMax: 3000,     // cap backoff at 3s instead of default 5s
+      timeout: 10000,                 // connection timeout
     });
     
     socketRef.current = newSocket;
@@ -180,7 +187,7 @@ export function useSocket() {
     // Fix #3 — server kicked this player
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
-      setGameState(prev => ({ ...prev, error: data.message, room: null, me: null }));
+      setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
     });
 
     newSocket.on('reaction', (data: { playerId: string, emoji: string }) => {
@@ -266,6 +273,10 @@ export function useSocket() {
   // (registered inside the socket effect but exposed here for clarity)
 
   // Fix #2 + #5: allow UI to dismiss these states
+  const clearWasKicked = useCallback(() => {
+    setGameState(prev => ({ ...prev, wasKicked: false, kickMessage: null }));
+  }, []);
+
   const clearServerRestarted = useCallback(() => {
     setGameState(prev => ({ ...prev, serverRestarted: false }));
   }, []);
@@ -300,6 +311,7 @@ export function useSocket() {
     playAgain,
     clearError,
     kickPlayer,
+    clearWasKicked,
     clearServerRestarted,
     clearRoomExpired,
     clearTopicRejection,
