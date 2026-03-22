@@ -70,41 +70,34 @@ export default function Home() {
         >
           {/* Flooq Logo — icon + wordmark */}
           <div className="inline-flex items-center gap-4 md:gap-6">
-            {/* F icon with orbiting arc */}
+            {/* F icon with orbiting dot */}
             <div className="relative flex-shrink-0" style={{ width: 64, height: 64 }}>
-              <div className="absolute inset-0 rounded-full" style={{ background: '#1A0A2E', boxShadow: '0 0 0 1px rgba(168,85,247,0.2)' }} />
-              <svg viewBox="0 0 80 80" className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
+              <svg viewBox="0 0 80 80" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
                 <defs>
                   <linearGradient id="flooqArc" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#A855F7"/>
                     <stop offset="100%" stopColor="#3B82F6"/>
                   </linearGradient>
-                  <radialGradient id="flooqGlow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.45"/>
-                    <stop offset="100%" stopColor="#7C3AED" stopOpacity="0"/>
-                  </radialGradient>
                 </defs>
-                <circle cx="40" cy="40" r="38" fill="url(#flooqGlow)"/>
+                {/* Purple circle bg */}
+                <circle cx="40" cy="40" r="38" fill="#5B21B6"/>
                 {/* Arc track */}
-                <circle cx="40" cy="40" r="30" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" transform="rotate(-90 40 40)"/>
-                {/* Arc fill ~75% */}
-                <circle cx="40" cy="40" r="30" fill="none" stroke="url(#flooqArc)" strokeWidth="3"
-                  strokeDasharray="188" strokeDashoffset="47" strokeLinecap="round" transform="rotate(-90 40 40)"
-                  style={{ animation: 'flooq-orbit-arc 8s linear infinite' }}
+                <circle cx="40" cy="40" r="30" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5"/>
+                {/* Arc fill — static 75%, no rotation animation on the arc itself */}
+                <circle cx="40" cy="40" r="30" fill="none" stroke="white" strokeWidth="2.5"
+                  strokeDasharray="141 47" strokeLinecap="round"
+                  transform="rotate(-90 40 40)"
                 />
-                {/* Dot */}
-                <circle cx="40" cy="10" r="5" fill="url(#flooqArc)"
-                  style={{ transformOrigin: '40px 40px', animation: 'flooq-orbit-dot 8s linear infinite' }}
-                />
-                {/* F mark */}
-                <rect x="28" y="22" width="5" height="36" rx="2.5" fill="url(#flooqArc)"/>
-                <rect x="28" y="22" width="24" height="5" rx="2.5" fill="url(#flooqArc)"/>
-                <rect x="28" y="38" width="18" height="5" rx="2.5" fill="url(#flooqArc)"/>
+                {/* Orbiting dot — uses SVG animateTransform which is reliable */}
+                <circle cx="40" cy="10" r="4.5" fill="white">
+                  <animateTransform attributeName="transform" type="rotate"
+                    from="0 40 40" to="360 40 40" dur="6s" repeatCount="indefinite"/>
+                </circle>
+                {/* F mark — white */}
+                <rect x="29" y="23" width="4.5" height="34" rx="2" fill="white"/>
+                <rect x="29" y="23" width="22" height="4.5" rx="2" fill="white"/>
+                <rect x="29" y="37" width="16" height="4.5" rx="2" fill="white"/>
               </svg>
-              <style>{`
-                @keyframes flooq-orbit-dot  { 100% { transform: rotate(360deg); } }
-                @keyframes flooq-orbit-arc  { 100% { transform: rotate(360deg); } }
-              `}</style>
             </div>
 
             {/* Wordmark */}
