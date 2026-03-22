@@ -186,8 +186,8 @@ export interface Room {
   code: string;
   players: Player[];
   status: GameStateStatus;
-  mode: 'round' | 'score' | 'preset';
-  topicMode?: 'live' | 'preset'; // 'live' = players type topic each round, 'preset' = topics submitted upfront
+  mode: 'round' | 'score';
+  topicMode: 'live' | 'preset'; // 'live' = players type topic each round, 'preset' = topics submitted upfront
   target: number; // e.g. 10 or 20 for round mode, 1000 or 2000 for score mode
   topicTimeSecs: number;    // host-configured topic selection timer (25–60s)
   questionTimeSecs: number; // host-configured answer timer (15–60s)

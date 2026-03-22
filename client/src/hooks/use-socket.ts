@@ -240,7 +240,7 @@ export function useSocket() {
     };
   }, []);
 
-  const updateSettings = useCallback((mode: 'round' | 'score' | 'preset', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
+  const updateSettings = useCallback((mode: 'round' | 'score', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
     if (!socketRef.current) return;
     socketRef.current.emit('updateSettings', { mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode });
   }, []);
@@ -256,7 +256,7 @@ export function useSocket() {
     socketRef.current.emit('setReady', { isReady });
   }, []);
 
-  const startGame = useCallback((mode: 'round' | 'score' | 'preset', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
+  const startGame = useCallback((mode: 'round' | 'score', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
     if (!socketRef.current) return;
     track('game_started', { mode, target });
     socketRef.current.emit('startGame', { mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode });
@@ -266,6 +266,11 @@ export function useSocket() {
     if (!socketRef.current) return;
     track('topic_selected', { topic, ...(difficulty ? { difficulty } : {}) });
     socketRef.current.emit('selectTopic', { topic, ...(difficulty ? { difficulty } : {}) });
+  }, []);
+
+  const updateTopicMode = useCallback((topicMode: 'live' | 'preset') => {
+    if (!socketRef.current) return;
+    socketRef.current.emit('updateTopicMode', { topicMode });
   }, []);
 
   const submitPresetTopics = useCallback((topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) => {
@@ -350,6 +355,7 @@ export function useSocket() {
     setReady,
     startGame,
     selectTopic,
+    updateTopicMode,
     submitPresetTopics,
     submitAnswer,
     sendReaction,

@@ -11,14 +11,15 @@ interface Props {
   room: Room;
   me: Player;
   onReady: (isReady: boolean) => void;
-  onStart: (mode: 'round' | 'score' | 'preset', target: number, topicTimeSecs: number, questionTimeSecs: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => void;
-  onUpdateSettings: (mode: 'round' | 'score' | 'preset', target: number, topicTimeSecs: number, questionTimeSecs: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => void;
+  onStart: (mode: 'round' | 'score', target: number, topicTimeSecs: number, questionTimeSecs: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => void;
+  onUpdateSettings: (mode: 'round' | 'score', target: number, topicTimeSecs: number, questionTimeSecs: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => void;
+  onUpdateTopicMode?: (topicMode: 'live' | 'preset') => void;
   onSubmitPresetTopics?: (topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) => void;
   onUpdateAvatar?: (avatarId: string) => void;
   onKickPlayer?: (targetId: string) => void;
 }
 
-export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpdateAvatar, onKickPlayer, onSubmitPresetTopics }: Props) {
+export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpdateAvatar, onKickPlayer, onUpdateTopicMode, onSubmitPresetTopics }: Props) {
   const [copied, setCopied] = useState(false);
   const [changingAvatar, setChangingAvatar] = useState(false);
   const { playSound } = useAudioSystem();
@@ -40,7 +41,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   const [presetTopicsLocal, setPresetTopicsLocal] = useState<PresetEntry[]>([]);
 
   const mySubmittedTopics: PresetEntry[] = (room.presetTopics ?? {})[me.id] ?? [];
-  const isPresetMode = (room.topicMode ?? 'live') === 'preset';
+  // isPresetMode defined below in clean mode logic section
   // Host must submit ≥1; others have submitted if their id is in presetTopics (even empty array)
   const allPlayersReady = room.players.every(p => {
     const submitted = room.presetTopics?.[p.id];
@@ -101,7 +102,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   const leaderId = topScore > 0 ? room.players.find(p => p.score === topScore)?.id : undefined;
 
   // Settings helpers
-  const emit = (overrides: Partial<{ rm: 'global'|'regional'; ri: RegionId|undefined; cc: string|undefined; tt: number; qt: number; m: typeof mode; t: typeof target }> = {}) => {
+  const emit = (overrides: Partial<{ rm: 'global'|'regional'; ri: RegionId|undefined; cc: string|undefined; tt: number; qt: number; m: 'round'|'score'; t: number }> = {}) => {
     onUpdateSettings(
       overrides.m  ?? mode,
       overrides.t  ?? target,
@@ -113,26 +114,23 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
     );
   };
 
-  // topicStyle controls HOW topics are chosen; winCondition controls WHEN game ends
-  const topicStyle = (room.topicMode ?? 'live') === 'preset' ? 'preset' : 'live';
-  // In preset mode, 'mode' is stored as 'preset' so can't be used to derive winCondition.
-  // Infer from target instead: 1000/2000 = score limit, 10/20 = rounds.
-  const winCondition: 'round' | 'score' = (mode === 'score' || target >= 1000) ? 'score' : 'round';
+  // ── Clean mode logic ──────────────────────────────────────────────────────
+  // topicMode ('live' | 'preset') and mode ('round' | 'score') are fully independent.
+  const isPresetMode = room.topicMode === 'preset';
 
+  // Switching topic style — fires a dedicated event, never touches mode/target
   const handleTopicStyleChange = (style: 'live' | 'preset') => {
-    // mode stays as 'round'/'score' — topicMode is communicated via 'preset' mode value
-    // We use 'preset' as the mode signal to server which sets topicMode='preset'
-    const newMode: 'round' | 'score' | 'preset' = style === 'preset' ? 'preset' : winCondition;
-    emit({ m: newMode, t: winCondition === 'score' ? 1000 : 10 });
+    onUpdateTopicMode?.(style);
     playSound('click');
   };
-  const handleWinConditionChange = (wc: 'round' | 'score') => {
-    // When in preset style, keep 'preset' as mode marker but update target
-    const newMode: 'round' | 'score' | 'preset' = topicStyle === 'preset' ? 'preset' : wc;
-    emit({ m: newMode, t: wc === 'score' ? 1000 : 10 });
+
+  // Switching win condition — always sends mode as 'round' or 'score', never 'preset'
+  const handleModeChange = (wc: 'round' | 'score') => {
+    emit({ m: wc, t: wc === 'score' ? 1000 : 10 });
     playSound('click');
   };
-  const handleTargetChange = (t: number)           => { emit({ t }); playSound('click'); };
+
+  const handleTargetChange = (t: number) => { emit({ t }); playSound('click'); };
   const handleTopicTimeChange    = (tt: number) => setLocalTopicTime(tt);
   const handleTopicTimeCommit    = (tt: number) => { emit({ tt }); playSound('click'); };
   const handleQuestionTimeChange = (qt: number) => setLocalQuestionTime(qt);
@@ -280,16 +278,16 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   <label className="text-white/70 text-sm font-medium mb-2 block">How topics are chosen</label>
                   <div className="flex gap-2">
                     <button onClick={() => handleTopicStyleChange('live')} disabled={settingsLocked}
-                      className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${topicStyle === 'live' ? 'bg-primary/20 border-primary/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
+                      className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${!isPresetMode ? 'bg-primary/20 border-primary/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
                       Live Topics
                     </button>
                     <button onClick={() => handleTopicStyleChange('preset')} disabled={settingsLocked}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${topicStyle === 'preset' ? 'bg-primary/20 border-primary/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isPresetMode ? 'bg-primary/20 border-primary/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
                       <BookOpen className="w-3.5 h-3.5" /> Preset Topics
                     </button>
                   </div>
                   <p className="text-white/25 text-xs mt-1.5 text-center">
-                    {topicStyle === 'live' ? 'Each player types a topic before every round' : 'Everyone submits topics upfront — no interruptions'}
+                    {!isPresetMode ? 'Each player types a topic before every round' : 'Everyone submits topics upfront — no interruptions'}
                   </p>
                 </div>
 
@@ -297,17 +295,17 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                 <div>
                   <label className="text-white/70 text-sm font-medium mb-2 block">Win condition</label>
                   <div className="flex gap-2">
-                    <Button variant={winCondition === 'round' ? 'primary' : 'outline'} className="flex-1" onClick={() => handleWinConditionChange('round')} disabled={settingsLocked}>Rounds</Button>
-                    <Button variant={winCondition === 'score' ? 'primary' : 'outline'} className="flex-1" onClick={() => handleWinConditionChange('score')} disabled={settingsLocked}>Score Limit</Button>
+                    <Button variant={mode === 'round' ? 'primary' : 'outline'} className="flex-1" onClick={() => handleModeChange('round')} disabled={settingsLocked}>Rounds</Button>
+                    <Button variant={mode === 'score' ? 'primary' : 'outline'} className="flex-1" onClick={() => handleModeChange('score')} disabled={settingsLocked}>Score Limit</Button>
                   </div>
                   {settingsLocked && <p className="text-white/30 text-xs mt-2 text-center">Settings locked — all players ready</p>}
                 </div>
 
                 {/* Target */}
                 <div>
-                  <label className="text-white/70 text-sm font-medium mb-2 block">{winCondition === 'round' ? 'Number of Rounds' : 'Target Score'}</label>
+                  <label className="text-white/70 text-sm font-medium mb-2 block">{mode === 'round' ? 'Number of Rounds' : 'Target Score'}</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {winCondition === 'round' ? (
+                    {mode === 'round' ? (
                       <>
                         <Button variant={target === 10 ? 'primary' : 'outline'} onClick={() => handleTargetChange(10)} disabled={settingsLocked}>10 Rounds</Button>
                         <Button variant={target === 20 ? 'primary' : 'outline'} onClick={() => handleTargetChange(20)} disabled={settingsLocked}>20 Rounds</Button>
@@ -522,7 +520,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                 <p className="text-white/70">Waiting for host to configure game...</p>
                 <div className="p-4 rounded-xl bg-white/5 border border-white/10 w-full space-y-1.5">
                   <p className="text-white font-medium text-lg">
-                    {(room.topicMode ?? 'live') === 'preset' ? 'Preset Topics' : 'Live Topics'} · {room.mode === 'score' ? `First to ${room.target} Pts` : `${room.target} Rounds`}
+                    {room.topicMode === 'preset' ? 'Preset Topics' : 'Live Topics'} · {room.mode === 'score' ? `First to ${room.target} Pts` : `${room.target} Rounds`}
                   </p>
                   <p className="text-white/40 text-sm">Answer: {questionTimeSecs}s</p>
                   <p className="text-white/40 text-sm flex items-center justify-center gap-1.5">

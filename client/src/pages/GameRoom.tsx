@@ -146,7 +146,7 @@ export default function GameRoom() {
   const {
     room, me, isConnected, isReconnecting, connectTimeout, error, topicRejection, topicSuggestions, loadingSuggestions,
     serverRestarted, roomExpired, wasKicked, kickMessage, topicStats, bestStreak,
-    joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings, submitPresetTopics,
+    joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings, submitPresetTopics, updateTopicMode,
     updateAvatar, resetGame, playAgain, clearError, clearTopicRejection, requestTopicSuggestions,
     clearServerRestarted, clearRoomExpired, clearWasKicked, kickPlayer,
   } = useSocket();
@@ -342,7 +342,7 @@ export default function GameRoom() {
   const renderView = () => {
     switch (room.status) {
       case 'lobby':
-        return <LobbyView key="lobby" room={room} me={me} onReady={setReady} onStart={startGame} onUpdateSettings={updateSettings} onUpdateAvatar={updateAvatar} onKickPlayer={kickPlayer} onSubmitPresetTopics={submitPresetTopics} />;
+        return <LobbyView key="lobby" room={room} me={me} onReady={setReady} onStart={startGame} onUpdateSettings={updateSettings} onUpdateAvatar={updateAvatar} onKickPlayer={kickPlayer} onUpdateTopicMode={updateTopicMode} onSubmitPresetTopics={submitPresetTopics} />;
       case 'topic_selection':
         return <TopicSelectionView key={`topic-${room.currentRound}`} room={room} me={me} onSelectTopic={selectTopic} error={error} onClearError={handleClearError} topicRejection={topicRejection} topicSuggestions={topicSuggestions} loadingSuggestions={loadingSuggestions} onRequestSuggestions={requestTopicSuggestions} />;
       case 'question':
