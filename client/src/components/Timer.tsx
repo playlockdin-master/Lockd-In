@@ -12,7 +12,7 @@ const CIRCUMFERENCE = 283; // 2π × r where r ≈ 45 (matches r="45%") at viewB
 export function Timer({ deadline, totalTime = 25 }: TimerProps) {
   // Whole-second display value — only re-renders once per second
   const [timeLeft, setTimeLeft] = useState(() =>
-    Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+    Math.min(totalTime, Math.max(0, Math.round((deadline - Date.now()) / 1000)))
   );
   const { playSound } = useAudioSystem();
   const lastTickedRef = useRef<number>(-1);
@@ -28,7 +28,7 @@ export function Timer({ deadline, totalTime = 25 }: TimerProps) {
     function tick() {
       const now = Date.now();
       const msLeft = Math.max(0, deadline - now);
-      const secsLeft = Math.ceil(msLeft / 1000);
+      const secsLeft = Math.min(totalTime, Math.max(0, Math.round(msLeft / 1000)));
       const progress = totalTime > 0 ? msLeft / (totalTime * 1000) : 0;
       const offset = CIRCUMFERENCE * (1 - Math.min(1, Math.max(0, progress)));
 
