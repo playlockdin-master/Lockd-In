@@ -18,6 +18,7 @@ import { Input } from "@/components/Input";
 import { User, LogOut } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
+import { FlooqLogo } from "@/components/FlooqLogo";
 
 // Fix #2 — localStorage fallback with 2-hour TTL so identity survives tab closes
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000;
@@ -86,10 +87,8 @@ function NicknameModal({ roomCode, onJoin }: { roomCode: string; onJoin: (name: 
         transition={{ type: 'spring', stiffness: 280, damping: 24 }}
         className="relative z-10 glass-panel p-6 rounded-3xl w-full max-w-sm text-center"
       >
-        <div className="font-display font-black text-3xl text-white mb-1 inline-flex items-center">
-          <span>LOCK</span>
-          <span className="text-primary mx-0.5" style={{ display: 'inline-block', transform: 'rotate(15deg) skewX(-8deg)' }}>D</span>
-          <span className="bg-primary text-white px-2 py-0.5 rounded-lg">IN</span>
+        <div className="mb-1 flex justify-center">
+          <FlooqLogo size="md" />
         </div>
         <p className="text-white/50 text-sm mb-1">You've been invited to room</p>
         <div className="text-2xl font-display font-black text-primary tracking-widest mb-4">{roomCode}</div>
@@ -435,11 +434,7 @@ export default function GameRoom() {
       <header className="sticky top-0 z-40 flex items-center justify-between px-3 py-2 md:px-6 md:py-3 bg-black/50 backdrop-blur-md border-b border-white/5 shrink-0 min-w-0 overflow-hidden">
         {/* Left: logo + leave */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className="font-display font-black text-base md:text-2xl tracking-tighter text-white/90 inline-flex items-center">
-            <span>LOCK</span>
-            <span className="text-primary mx-0.5" style={{ display: 'inline-block', transform: 'rotate(15deg) skewX(-8deg)' }}>D</span>
-            <span className="bg-primary text-white px-1 md:px-2 py-0.5 rounded-lg text-sm md:text-xl">IN</span>
-          </div>
+          <FlooqLogo size="sm" />
           <button
             onClick={handleExit}
             title="Leave room"

@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { FlooqLogo } from "./FlooqLogo";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -53,27 +54,7 @@ export function RoomSplash({ onDone }: Props) {
               transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
               className="relative"
             >
-              <h1 className="text-6xl md:text-8xl font-display font-black tracking-tighter text-white leading-none inline-flex items-center">
-                <span>LOCK</span>
-                <motion.span
-                  initial={{ opacity: 0, rotate: 0 }}
-                  animate={{ opacity: 1, rotate: 15 }}
-                  transition={{ delay: 0.25, duration: 0.3 }}
-                  className="text-primary mx-0.5 md:mx-1"
-                  style={{ display: 'inline-block', transform: 'rotate(15deg) skewX(-8deg)', transformOrigin: 'center' }}
-                >
-                  D
-                </motion.span>
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.35, duration: 0.3 }}
-                  className="inline-block bg-primary text-white px-3 py-0.5 rounded-xl md:rounded-2xl"
-                  style={{ boxShadow: "0 0 40px rgba(168,85,247,0.7)" }}
-                >
-                  IN
-                </motion.span>
-              </h1>
+              <FlooqLogo size="xl" />
             </motion.div>
 
             <motion.p
