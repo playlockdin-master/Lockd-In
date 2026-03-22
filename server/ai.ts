@@ -853,3 +853,45 @@ export async function generateQuestion(
     return getRandomFallback();
   }
 }
+// ---------------------------------------------------------------------------
+// BATCH QUESTION GENERATION — preset mode
+// Generates all questions for a game in one go using multiple parallel calls.
+// Topics are cycled if there are fewer topics than rounds.
+// ---------------------------------------------------------------------------
+
+export async function generateQuestionsForPresetMode(
+  topics: string[],     // pool of all player-submitted topics
+  totalRounds: number,  // how many questions to generate
+  roomId: string,
+  regionContext?: string,
+): Promise<(Question & { topic: string })[]> {
+  if (topics.length === 0) throw new Error('No topics provided');
+
+  // Cycle topics to fill all rounds
+  const topicSequence: string[] = [];
+  for (let i = 0; i < totalRounds; i++) {
+    topicSequence.push(topics[i % topics.length]);
+  }
+
+  // Generate all questions in parallel (respects provider fallback per call)
+  const askedQuestions: string[] = [];
+  const results = await Promise.all(
+    topicSequence.map(async (topic, idx) => {
+      // Stagger slightly to avoid hammering a single provider simultaneously
+      if (idx > 0) await new Promise(r => setTimeout(r, idx * 80));
+      const question = await generateQuestion(
+        topic,
+        [],
+        roomId,
+        undefined,
+        undefined,
+        askedQuestions,
+        regionContext,
+      );
+      askedQuestions.push(question.text);
+      return { ...question, topic: question.canonicalTopic || topic };
+    })
+  );
+
+  return results;
+}

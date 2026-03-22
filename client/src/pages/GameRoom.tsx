@@ -146,7 +146,7 @@ export default function GameRoom() {
   const {
     room, me, isConnected, isReconnecting, connectTimeout, error, topicRejection, topicSuggestions, loadingSuggestions,
     serverRestarted, roomExpired, wasKicked, kickMessage, topicStats, bestStreak,
-    joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings,
+    joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings, submitPresetTopics,
     updateAvatar, resetGame, playAgain, clearError, clearTopicRejection, requestTopicSuggestions,
     clearServerRestarted, clearRoomExpired, clearWasKicked, kickPlayer,
   } = useSocket();
@@ -342,11 +342,24 @@ export default function GameRoom() {
   const renderView = () => {
     switch (room.status) {
       case 'lobby':
-        return <LobbyView key="lobby" room={room} me={me} onReady={setReady} onStart={startGame} onUpdateSettings={updateSettings} onUpdateAvatar={updateAvatar} onKickPlayer={kickPlayer} />;
+        return <LobbyView key="lobby" room={room} me={me} onReady={setReady} onStart={startGame} onUpdateSettings={updateSettings} onUpdateAvatar={updateAvatar} onKickPlayer={kickPlayer} onSubmitPresetTopics={submitPresetTopics} />;
       case 'topic_selection':
         return <TopicSelectionView key={`topic-${room.currentRound}`} room={room} me={me} onSelectTopic={selectTopic} error={error} onClearError={handleClearError} topicRejection={topicRejection} topicSuggestions={topicSuggestions} loadingSuggestions={loadingSuggestions} onRequestSuggestions={requestTopicSuggestions} />;
       case 'question':
         return <QuestionView key={`question-${room.currentRound}`} room={room} me={me} onSubmitAnswer={submitAnswer} topicRejection={topicRejection} />;
+      case 'generating':
+        return (
+          <div key="generating" className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center px-4">
+            <div className="relative w-20 h-20">
+              <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+              <div className="absolute inset-0 rounded-full border-4 border-t-primary animate-spin" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-white font-display font-bold text-2xl">Generating Questions</p>
+              <p className="text-white/40 text-sm">Preparing {room.target} questions from your topics...</p>
+            </div>
+          </div>
+        );
       case 'results':
         return <ResultsView key={`results-${room.currentRound}`} room={room} me={me} />;
       case 'ended':
