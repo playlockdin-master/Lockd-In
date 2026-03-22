@@ -23,7 +23,7 @@ import { validatePlayerName } from "@/lib/validate";
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000;
 function saveIdentity(name: string, avatarId: string) {
   const payload = JSON.stringify({ name, avatarId, expiresAt: Date.now() + IDENTITY_TTL_MS });
-  try { localStorage.setItem('lockdin_identity', payload); } catch {}
+  try { localStorage.setItem('flooq_identity', payload); } catch {}
   sessionStorage.setItem('playerName', name);
   sessionStorage.setItem('avatarId', avatarId);
 }
@@ -33,10 +33,10 @@ function loadIdentity(): { name: string; avatarId: string } | null {
   if (ssName) return { name: ssName, avatarId: sessionStorage.getItem('avatarId') ?? 'ghost' };
   // localStorage fallback (different tab / after tab close)
   try {
-    const raw = localStorage.getItem('lockdin_identity');
+    const raw = localStorage.getItem('flooq_identity');
     if (!raw) return null;
     const { name, avatarId, expiresAt } = JSON.parse(raw);
-    if (Date.now() > expiresAt) { localStorage.removeItem('lockdin_identity'); return null; }
+    if (Date.now() > expiresAt) { localStorage.removeItem('flooq_identity'); return null; }
     // Restore to sessionStorage for this tab
     sessionStorage.setItem('playerName', name);
     sessionStorage.setItem('avatarId', avatarId);
@@ -46,7 +46,7 @@ function loadIdentity(): { name: string; avatarId: string } | null {
 function clearIdentity() {
   sessionStorage.removeItem('playerName');
   sessionStorage.removeItem('avatarId');
-  try { localStorage.removeItem('lockdin_identity'); } catch {}
+  try { localStorage.removeItem('flooq_identity'); } catch {}
 }
 
 // ── Nickname modal shown when arriving via a shared link ──────────────────────

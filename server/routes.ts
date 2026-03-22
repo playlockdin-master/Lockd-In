@@ -8,7 +8,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // ── Yellow #3 fix: avoid CORS wildcard in production ──────────────────────
-  // CLIENT_ORIGIN must be set to your deployed frontend URL (e.g. https://lockd-in.com).
+  // CLIENT_ORIGIN must be set to your deployed frontend URL (e.g. https://flooq.up.railway.app).
   // In development (no env var), allow same-origin only via false — never use `true` in prod.
   const allowedOrigin: string | false =
     process.env.CLIENT_ORIGIN

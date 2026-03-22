@@ -567,7 +567,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
             fontSize: size * 0.3,
             lineHeight: 1,
             filter: "drop-shadow(0 0 6px #facc15) drop-shadow(0 0 14px #f59e0b)",
-            animation: "lockdin-crown 2.5s ease-in-out infinite",
+            animation: "flooq-crown 2.5s ease-in-out infinite",
             zIndex: 10,
             userSelect: "none",
           }}
@@ -595,7 +595,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
               fontSize: size * 0.34,
               lineHeight: 1,
               filter: `drop-shadow(0 0 6px ${fire.glow})`,
-              animation: "lockdin-fire 0.65s ease-in-out infinite alternate",
+              animation: "flooq-fire 0.65s ease-in-out infinite alternate",
               color: fire.color,
             }}
           >
@@ -626,7 +626,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
             : "scale(1)",
           transition: "transform 0.28s cubic-bezier(.36,.07,.19,.97)",
           filter: `drop-shadow(0 0 ${size * 0.18}px ${auraColor}${auraOpacity})`,
-          animation: mood === "idle" ? "lockdin-bob 3s ease-in-out infinite" : "none",
+          animation: mood === "idle" ? "flooq-bob 3s ease-in-out infinite" : "none",
         }}
       >
         <Char size={size} mood={mood} />
@@ -634,9 +634,9 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
 
       {/* Keyframes injected once */}
       <style>{`
-        @keyframes lockdin-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(-4px)} }
-        @keyframes lockdin-crown { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-3px)} }
-        @keyframes lockdin-fire  { 0%{transform:scale(1) rotate(-4deg)} 100%{transform:scale(1.14) rotate(4deg)} }
+        @keyframes flooq-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(-4px)} }
+        @keyframes flooq-crown { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-3px)} }
+        @keyframes flooq-fire  { 0%{transform:scale(1) rotate(-4deg)} 100%{transform:scale(1.14) rotate(4deg)} }
       `}</style>
     </div>
   );

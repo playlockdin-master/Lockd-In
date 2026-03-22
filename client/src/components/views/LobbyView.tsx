@@ -114,7 +114,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   };
   const handleShare = () => {
     const url = `${window.location.origin}/room/${room.code}`;
-    if (navigator.share) { navigator.share({ title: 'Join my LOCKD IN room!', url }).catch(() => {}); }
+    if (navigator.share) { navigator.share({ title: 'Join my Flooq room!', url }).catch(() => {}); }
     else { if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).catch(() => fallbackCopy(url)); else fallbackCopy(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     playSound('click');
   };

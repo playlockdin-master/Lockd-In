@@ -75,7 +75,7 @@ export function useSocket() {
     clearIdentityRef.current = () => {
       sessionStorage.removeItem('playerName');
       sessionStorage.removeItem('avatarId');
-      try { localStorage.removeItem('lockdin_identity'); } catch {}
+      try { localStorage.removeItem('flooq_identity'); } catch {}
     };
   });
 
