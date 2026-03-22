@@ -227,130 +227,105 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
     ? passportShareText(me, room, topicStats, bestStreak)
     : streakShareText(me, bestStreak, topicStats);
 
-  // ── Generate SVG blob from card data for image sharing ─────────────────────
   const buildShareSvg = (): string => {
-    const stats = topicStats.slice(0, 6);
-    const acc   = accuracy(topicStats);
-    const rank  = myRank(room, me);
+    const stats   = topicStats.slice(0, 6);
+    const acc     = accuracy(topicStats);
+    const rank    = myRank(room, me);
     const rankLbl = rankLabel(rank);
-    const hotTopics = topicStats.filter(s => s.total > 0 && s.correct === s.total).map(s => s.topic);
+    const hotTopics   = topicStats.filter(s => s.total > 0 && s.correct === s.total).map(s => s.topic);
     const otherTopics = topicStats.filter(s => !(s.total > 0 && s.correct === s.total)).map(s => s.topic);
 
     if (tab === "passport") {
-      const rows = Math.ceil(stats.length / 3);
-      const gridH = rows * 52 + (rows - 1) * 8;
+      const rows   = Math.ceil(stats.length / 3);
+      const gridH  = rows * 52 + (rows - 1) * 8;
       const totalH = 56 + 44 + 20 + gridH + 72 + 28;
-      const chips = stats.map((s, i) => {
-        const col = i % 3; const row = Math.floor(i / 3);
-        const x = 24 + col * 116; const y = 120 + row * 60;
-        const pct = s.total === 0 ? 0 : s.correct / s.total;
-        const fill  = pct === 1 ? '#134e2a' : pct === 0 ? '#4c1414' : '#1a1a2e';
-        const stroke= pct === 1 ? '#34d399' : pct === 0 ? '#f87171' : '#ffffff22';
-        const tcolor= pct === 1 ? '#34d399' : pct === 0 ? '#f87171' : '#ffffff';
-        const label = pct === 1 ? \`★ \${s.correct}/\${s.total}\` : \`\${s.correct}/\${s.total}\`;
-        const topic = s.topic.length > 10 ? s.topic.slice(0, 9) + '…' : s.topic;
-        return \`<rect x="\${x}" y="\${y}" width="104" height="48" rx="8" fill="\${fill}" stroke="\${stroke}" stroke-width="1"/>
-        <text x="\${x+52}" y="\${y+18}" text-anchor="middle" font-family="system-ui" font-size="10" fill="#ffffff88">\${topic}</text>
-        <text x="\${x+52}" y="\${y+36}" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="700" fill="\${tcolor}">\${label}</text>\`;
-      }).join('\n');
+      const chips  = stats.map((s, i) => {
+        const col    = i % 3;
+        const row    = Math.floor(i / 3);
+        const x      = 24 + col * 116;
+        const y      = 120 + row * 60;
+        const pct    = s.total === 0 ? 0 : s.correct / s.total;
+        const fill   = pct === 1 ? "#134e2a" : pct === 0 ? "#4c1414" : "#1a1a2e";
+        const stroke = pct === 1 ? "#34d399" : pct === 0 ? "#f87171" : "#ffffff22";
+        const tcolor = pct === 1 ? "#34d399" : pct === 0 ? "#f87171" : "#ffffff";
+        const label  = pct === 1 ? ("★ " + s.correct + "/" + s.total) : (s.correct + "/" + s.total);
+        const topic  = s.topic.length > 10 ? s.topic.slice(0, 9) + "…" : s.topic;
+        return (
+          "<rect x=\"" + x + "\" y=\"" + y + "\" width=\"104\" height=\"48\" rx=\"8\" fill=\"" + fill + "\" stroke=\"" + stroke + "\" stroke-width=\"1\"/>" +
+          "<text x=\"" + (x + 52) + "\" y=\"" + (y + 18) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"10\" fill=\"#ffffff88\">" + topic + "</text>" +
+          "<text x=\"" + (x + 52) + "\" y=\"" + (y + 36) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"13\" font-weight=\"700\" fill=\"" + tcolor + "\">" + label + "</text>"
+        );
+      }).join("");
 
-      return \`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="\${totalH}">
-        <rect width="380" height="\${totalH}" rx="20" fill="#0d0d1a"/>
-        <rect width="380" height="\${totalH}" rx="20" fill="url(#pg)"/>
-        <defs>
-          <linearGradient id="ag" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#3b82f6"/></linearGradient>
-          <radialGradient id="pg" cx="20%" cy="50%" r="60%"><stop offset="0%" stop-color="#4c1d95" stop-opacity="0.2"/><stop offset="100%" stop-color="#0d0d1a" stop-opacity="0"/></radialGradient>
-        </defs>
-        <text x="24" y="42" font-family="system-ui" font-size="22" font-weight="900" fill="#a855f7">f<tspan fill="white">oo</tspan>q</text>
-        <rect x="254" y="24" width="102" height="26" rx="13" fill="#a855f722" stroke="#a855f744" stroke-width="1"/>
-        <text x="305" y="41" text-anchor="middle" font-family="system-ui" font-size="11" font-weight="600" fill="#a855f7">\${rankLbl}</text>
-        <text x="24" y="80" font-family="system-ui" font-size="24" font-weight="900" fill="white">\${me.name}</text>
-        <text x="24" y="100" font-family="system-ui" font-size="11" fill="#ffffff55">\${room.players.length} PLAYERS · \${room.currentRound} ROUNDS</text>
-        \${chips}
-        <line x1="24" y1="\${120 + gridH + 16}" x2="356" y2="\${120 + gridH + 16}" stroke="#ffffff11" stroke-width="1"/>
-        <text x="64" y="\${120 + gridH + 44}" text-anchor="middle" font-family="system-ui" font-size="22" font-weight="900" fill="white">\${me.score}</text>
-        <text x="64" y="\${120 + gridH + 58}" text-anchor="middle" font-family="system-ui" font-size="9" fill="#ffffff44">SCORE</text>
-        <text x="190" y="\${120 + gridH + 44}" text-anchor="middle" font-family="system-ui" font-size="22" font-weight="900" fill="white">x\${bestStreak}</text>
-        <text x="190" y="\${120 + gridH + 58}" text-anchor="middle" font-family="system-ui" font-size="9" fill="#ffffff44">BEST STREAK</text>
-        <text x="316" y="\${120 + gridH + 44}" text-anchor="middle" font-family="system-ui" font-size="22" font-weight="900" fill="white">\${acc}%</text>
-        <text x="316" y="\${120 + gridH + 58}" text-anchor="middle" font-family="system-ui" font-size="9" fill="#ffffff44">ACCURACY</text>
-        <text x="190" y="\${totalH - 10}" text-anchor="middle" font-family="system-ui" font-size="10" fill="#a855f744">flooq.up.railway.app</text>
-      </svg>\`;
+      const statY  = 120 + gridH + 16;
+      return (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"380\" height=\"" + totalH + "\">" +
+        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"#0d0d1a\"/>" +
+        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"url(#pg)\"/>" +
+        "<defs>" +
+        "<linearGradient id=\"ag\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#a855f7\"/><stop offset=\"100%\" stop-color=\"#3b82f6\"/></linearGradient>" +
+        "<radialGradient id=\"pg\" cx=\"20%\" cy=\"50%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#4c1d95\" stop-opacity=\"0.2\"/><stop offset=\"100%\" stop-color=\"#0d0d1a\" stop-opacity=\"0\"/></radialGradient>" +
+        "</defs>" +
+        "<text x=\"24\" y=\"42\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"#a855f7\">f<tspan fill=\"white\">loo</tspan>q</text>" +
+        "<rect x=\"254\" y=\"24\" width=\"102\" height=\"26\" rx=\"13\" fill=\"#a855f722\" stroke=\"#a855f744\" stroke-width=\"1\"/>" +
+        "<text x=\"305\" y=\"41\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"11\" font-weight=\"600\" fill=\"#a855f7\">" + rankLbl + "</text>" +
+        "<text x=\"24\" y=\"80\" font-family=\"system-ui\" font-size=\"24\" font-weight=\"900\" fill=\"white\">" + me.name + "</text>" +
+        "<text x=\"24\" y=\"100\" font-family=\"system-ui\" font-size=\"11\" fill=\"#ffffff55\">" + room.players.length + " PLAYERS · " + room.currentRound + " ROUNDS</text>" +
+        chips +
+        "<line x1=\"24\" y1=\"" + statY + "\" x2=\"356\" y2=\"" + statY + "\" stroke=\"#ffffff11\" stroke-width=\"1\"/>" +
+        "<text x=\"64\" y=\"" + (statY + 28) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"white\">" + me.score + "</text>" +
+        "<text x=\"64\" y=\"" + (statY + 42) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"9\" fill=\"#ffffff44\">SCORE</text>" +
+        "<text x=\"190\" y=\"" + (statY + 28) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"white\">x" + bestStreak + "</text>" +
+        "<text x=\"190\" y=\"" + (statY + 42) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"9\" fill=\"#ffffff44\">BEST STREAK</text>" +
+        "<text x=\"316\" y=\"" + (statY + 28) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"white\">" + acc + "%</text>" +
+        "<text x=\"316\" y=\"" + (statY + 42) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"9\" fill=\"#ffffff44\">ACCURACY</text>" +
+        "<text x=\"190\" y=\"" + (totalH - 10) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"10\" fill=\"#a855f744\">flooq.up.railway.app</text>" +
+        "</svg>"
+      );
     } else {
       // Streak card
-      const allTopics = [...hotTopics.map(t => ({t, hot: true})), ...otherTopics.slice(0, 4).map(t => ({t, hot: false}))];
-      let pillX = 24; let pillY = 96; let pillRows = [''];
-      allTopics.forEach(({t, hot}) => {
+      const allTopics = [
+        ...hotTopics.map(t => ({ t, hot: true  })),
+        ...otherTopics.slice(0, 4).map(t => ({ t, hot: false })),
+      ];
+      let pillX = 24; let pillY = 96;
+      let pillSvg = "";
+      allTopics.forEach(({ t, hot }) => {
         const w = t.length * 7.5 + 24;
-        if (pillX + w > 356) { pillX = 24; pillY += 32; pillRows.push(''); }
-        pillRows[pillRows.length-1] += \`<rect x="\${pillX}" y="\${pillY}" width="\${w}" height="24" rx="12" fill="\${hot ? '#78350f' : '#ffffff0d'}" stroke="\${hot ? '#f59e0b44' : 'none'}"/>
-        <text x="\${pillX + w/2}" y="\${pillY + 16}" text-anchor="middle" font-family="system-ui" font-size="11" font-weight="\${hot ? 600 : 400}" fill="\${hot ? '#fbbf24' : '#ffffff66'}">\${t}\${hot ? ' 🔥' : ''}</text>\`;
+        if (pillX + w > 356) { pillX = 24; pillY += 32; }
+        pillSvg += (
+          "<rect x=\"" + pillX + "\" y=\"" + pillY + "\" width=\"" + w + "\" height=\"24\" rx=\"12\" fill=\"" + (hot ? "#78350f" : "#ffffff0d") + "\" stroke=\"" + (hot ? "#f59e0b44" : "none") + "\"/>" +
+          "<text x=\"" + (pillX + w / 2) + "\" y=\"" + (pillY + 16) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"11\" font-weight=\"" + (hot ? "600" : "400") + "\" fill=\"" + (hot ? "#fbbf24" : "#ffffff66") + "\">" + t + (hot ? " 🔥" : "") + "</text>"
+        );
         pillX += w + 8;
       });
-      const pillH = pillY + 32 - 96;
+      const pillH  = pillY + 32 - 96;
       const totalH = 96 + pillH + 60;
-      return \`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="\${totalH}">
-        <rect width="380" height="\${totalH}" rx="20" fill="#0d0d1a"/>
-        <defs><radialGradient id="sg" cx="20%" cy="30%" r="60%"><stop offset="0%" stop-color="#92400e" stop-opacity="0.15"/><stop offset="100%" stop-color="#0d0d1a" stop-opacity="0"/></radialGradient></defs>
-        <rect width="380" height="\${totalH}" rx="20" fill="url(#sg)"/>
-        <rect x="24" y="20" width="44" height="44" rx="12" fill="#78350f33" stroke="#f59e0b44" stroke-width="1"/>
-        <text x="46" y="50" text-anchor="middle" font-family="system-ui" font-size="22">🔥</text>
-        <text x="80" y="40" font-family="system-ui" font-size="18" font-weight="900" fill="white">\${me.name} hit a x\${bestStreak} streak</text>
-        <text x="80" y="58" font-family="system-ui" font-size="12" fill="#ffffff44">in Flooq · \${room.players.length} players</text>
-        \${pillRows.join('\n')}
-        <line x1="24" y1="\${96 + pillH + 14}" x2="356" y2="\${96 + pillH + 14}" stroke="#ffffff11" stroke-width="1"/>
-        <text x="24" y="\${96 + pillH + 36}" font-family="system-ui" font-size="11" fill="#a855f766">flooq.up.railway.app</text>
-        <rect x="270" y="\${96 + pillH + 20}" width="110" height="28" rx="14" fill="#7c3aed"/>
-        <text x="325" y="\${96 + pillH + 38}" text-anchor="middle" font-family="system-ui" font-size="12" font-weight="600" fill="white">Beat my streak</text>
-      </svg>\`;
+      const lineY  = 96 + pillH + 14;
+      return (
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"380\" height=\"" + totalH + "\">" +
+        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"#0d0d1a\"/>" +
+        "<defs><radialGradient id=\"sg\" cx=\"20%\" cy=\"30%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#92400e\" stop-opacity=\"0.15\"/><stop offset=\"100%\" stop-color=\"#0d0d1a\" stop-opacity=\"0\"/></radialGradient></defs>" +
+        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"url(#sg)\"/>" +
+        "<rect x=\"24\" y=\"20\" width=\"44\" height=\"44\" rx=\"12\" fill=\"#78350f33\" stroke=\"#f59e0b44\" stroke-width=\"1\"/>" +
+        "<text x=\"46\" y=\"50\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"22\">🔥</text>" +
+        "<text x=\"80\" y=\"40\" font-family=\"system-ui\" font-size=\"18\" font-weight=\"900\" fill=\"white\">" + me.name + " hit a x" + bestStreak + " streak</text>" +
+        "<text x=\"80\" y=\"58\" font-family=\"system-ui\" font-size=\"12\" fill=\"#ffffff44\">in Flooq · " + room.players.length + " players</text>" +
+        pillSvg +
+        "<line x1=\"24\" y1=\"" + lineY + "\" x2=\"356\" y2=\"" + lineY + "\" stroke=\"#ffffff11\" stroke-width=\"1\"/>" +
+        "<text x=\"24\" y=\"" + (lineY + 22) + "\" font-family=\"system-ui\" font-size=\"11\" fill=\"#a855f766\">flooq.up.railway.app</text>" +
+        "<rect x=\"270\" y=\"" + (lineY + 6) + "\" width=\"110\" height=\"28\" rx=\"14\" fill=\"#7c3aed\"/>" +
+        "<text x=\"325\" y=\"" + (lineY + 24) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"12\" font-weight=\"600\" fill=\"white\">Beat my streak</text>" +
+        "</svg>"
+      );
     }
   };
 
-  const handleCopyImage = async () => {
-    const svgStr  = buildShareSvg();
-    const blob    = new Blob([svgStr], { type: 'image/svg+xml' });
-    // Try Clipboard API with SVG (works in Chrome 120+)
-    try {
-      const item = new ClipboardItem({ 'image/svg+xml': blob });
-      await navigator.clipboard.write([item]);
-      setCopied(true); setTimeout(() => setCopied(false), 2000); return;
-    } catch { /* fallthrough */ }
-    // Fallback: render SVG to canvas and copy as PNG
-    try {
-      const url    = URL.createObjectURL(blob);
-      const img    = new Image();
-      img.onload = async () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width * 2; canvas.height = img.height * 2;
-        const ctx = canvas.getContext('2d')!;
-        ctx.scale(2, 2); ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-        canvas.toBlob(async (pngBlob) => {
-          if (!pngBlob) return;
-          try {
-            await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-            setCopied(true); setTimeout(() => setCopied(false), 2000);
-          } catch { handleDownload(svgStr); }
-        }, 'image/png');
-      };
-      img.src = url;
-    } catch { handleDownload(svgStr); }
-  };
-
-  const handleDownload = (svgStr?: string) => {
-    const svg  = svgStr ?? buildShareSvg();
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = \`flooq-\${tab}-\${me.name}.svg\`;
-    a.click(); URL.revokeObjectURL(url);
-  };
-
-  const handleShare = async () => {
+    const handleShare = async () => {
     // On mobile with Web Share API — try sharing the SVG file directly
     const svgStr = buildShareSvg();
     const blob   = new Blob([svgStr], { type: 'image/svg+xml' });
-    const file   = new File([blob], \`flooq-result.svg\`, { type: 'image/svg+xml' });
+    const file   = new File([blob], `flooq-result.svg`, { type: 'image/svg+xml' });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: 'My Flooq result', text: shareText });
