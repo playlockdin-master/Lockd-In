@@ -115,16 +115,19 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
 
   // topicStyle controls HOW topics are chosen; winCondition controls WHEN game ends
   const topicStyle = (room.topicMode ?? 'live') === 'preset' ? 'preset' : 'live';
-  const winCondition: 'round' | 'score' = (mode === 'score') ? 'score' : 'round';
+  // In preset mode, 'mode' is stored as 'preset' so can't be used to derive winCondition.
+  // Infer from target instead: 1000/2000 = score limit, 10/20 = rounds.
+  const winCondition: 'round' | 'score' = (mode === 'score' || target >= 1000) ? 'score' : 'round';
 
   const handleTopicStyleChange = (style: 'live' | 'preset') => {
-    // Keep current win condition, just switch topic mode
+    // mode stays as 'round'/'score' — topicMode is communicated via 'preset' mode value
+    // We use 'preset' as the mode signal to server which sets topicMode='preset'
     const newMode: 'round' | 'score' | 'preset' = style === 'preset' ? 'preset' : winCondition;
-    emit({ m: newMode, t: newMode === 'score' ? 1000 : 10 });
+    emit({ m: newMode, t: winCondition === 'score' ? 1000 : 10 });
     playSound('click');
   };
   const handleWinConditionChange = (wc: 'round' | 'score') => {
-    // Keep current topic style
+    // When in preset style, keep 'preset' as mode marker but update target
     const newMode: 'round' | 'score' | 'preset' = topicStyle === 'preset' ? 'preset' : wc;
     emit({ m: newMode, t: wc === 'score' ? 1000 : 10 });
     playSound('click');

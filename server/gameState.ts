@@ -439,7 +439,7 @@ export function setupGameSockets(io: Server) {
       if (!validModes.includes(mode)) return;
       const validRoundTargets = [10, 20];
       const validScoreTargets = [1000, 2000];
-      const validTargets = mode === 'preset' ? validRoundTargets : mode === 'round' ? validRoundTargets : validScoreTargets;
+      const validTargets = mode === 'round' ? validRoundTargets : validScoreTargets;
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
@@ -488,7 +488,7 @@ export function setupGameSockets(io: Server) {
       if (!validModes.includes(mode)) return;
       const validRoundTargets = [10, 20];
       const validScoreTargets = [1000, 2000];
-      const validTargets = mode === 'preset' ? validRoundTargets : mode === 'round' ? validRoundTargets : validScoreTargets;
+      const validTargets = mode === 'round' ? validRoundTargets : validScoreTargets;
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
@@ -1114,6 +1114,25 @@ function startPresetRound(room: Room, io: Server) {
   const questions = room.pregeneratedQuestions ?? [];
   const roundIndex = room.currentRound; // 0-based index into questions array
 
+  // Check score limit before starting next round
+  const winMode = room.target >= 1000 ? 'score' : 'round';
+  if (winMode === 'score') {
+    const topScore = room.players.length > 0 ? Math.max(...room.players.map(p => p.score)) : 0;
+    if (topScore >= room.target) {
+      const sorted = [...room.players].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (b.lastPoints ?? 0) - (a.lastPoints ?? 0);
+      });
+      room.players.splice(0, room.players.length, ...sorted);
+      room.status = 'ended';
+      room.playAgainIds = [];
+      room.viewingResultsIds = room.players.map(p => p.id);
+      io.to(room.code).emit('gameState', serializeRoom(room));
+      scheduleEndedRoomCleanup(room, io);
+      return;
+    }
+  }
+
   if (roundIndex >= questions.length) {
     // All questions used — end game
     room.status = 'ended';
@@ -1479,23 +1498,34 @@ function checkGameEndOrNextRound(room: Room, io: Server) {
   // Use the live authoritative reference from here
   room = liveRoom;
 
+  // Determine win condition — preset mode uses the real mode stored alongside topicMode
+  // 'preset' mode always uses round-based counting (target = number of pre-generated questions)
+  // but if winCondition is score-based (mode was 'score' at start), check score too.
+  const winMode = room.topicMode === 'preset'
+    ? (room.target >= 1000 ? 'score' : 'round')  // infer from target value
+    : room.mode;
+
   let ended = false;
-  if (room.mode === "round" && room.currentRound >= room.target) {
+  if (winMode === 'round' && room.currentRound >= room.target) {
     ended = true;
-  } else if (room.mode === "score") {
-    // ── Guard against Math.max(...[]) === -Infinity when players array is empty
+  } else if (winMode === 'score') {
     const topScore = room.players.length > 0
       ? Math.max(...room.players.map(p => p.score))
       : 0;
     if (topScore >= room.target) {
       ended = true;
-      // Tiebreaker: sort a COPY for display — do NOT mutate room.players in-place
-      // as that corrupts join order and host assignment for the next game.
       const sorted = [...room.players].sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return (b.lastPoints ?? 0) - (a.lastPoints ?? 0);
       });
       room.players.splice(0, room.players.length, ...sorted);
+    }
+  }
+  // For preset mode: also end if all pre-generated questions have been used
+  if (!ended && room.topicMode === 'preset') {
+    const totalQuestions = room.pregeneratedQuestions?.length ?? 0;
+    if (totalQuestions > 0 && room.currentRound >= totalQuestions) {
+      ended = true;
     }
   }
 
@@ -1540,7 +1570,7 @@ function checkGameEndOrNextRound(room: Room, io: Server) {
       }, EXPIRED_WARN_LEAD);
     }, ENDED_ROOM_TTL - EXPIRED_WARN_LEAD);
   } else {
-    if (room.mode === 'preset') {
+    if (room.topicMode === 'preset') {
       startPresetRound(room, io);
     } else {
       startTopicSelection(room, io);
