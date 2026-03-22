@@ -23,6 +23,12 @@ export const CHARACTERS: AvatarCharacter[] = [
   { id: "shroom",   label: "Angry Shroom",   color: "#fb923c" },
   { id: "robo",     label: "Robot Cube",     color: "#67e8f9" },
   { id: "cat",      label: "Shadow Cat",     color: "#e879f9" },
+  { id: "witch",    label: "Tiny Witch",     color: "#a78bfa" },
+  { id: "cloud",    label: "Angry Cloud",    color: "#bfdbfe" },
+  { id: "fox",      label: "Cool Fox",       color: "#f97316" },
+  { id: "zombie",   label: "Zombie Head",    color: "#86efac" },
+  { id: "dragon",   label: "Tiny Dragon",    color: "#fb923c" },
+  { id: "bear",     label: "Gloom Bear",     color: "#818cf8" },
 ];
 
 // ── Fire color based on streak ────────────────────────────────────────────────
@@ -504,6 +510,213 @@ function ShadowCat({ size, mood }: { size: number; mood: AvatarMood }) {
   );
 }
 
+
+function TinyWitch({ size, mood }: { size: number; mood: AvatarMood }) {
+  const happy = mood === "correct";
+  const sad   = mood === "wrong";
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
+      {/* Hat */}
+      <polygon points="40,8 52,28 28,28" fill="#1e1b4b"/>
+      <rect x="22" y="27" width="36" height="5" rx="2.5" fill="#312e81"/>
+      {/* Star on hat */}
+      <polygon points="40,13 41.2,16.6 45,16.6 42.1,18.7 43.2,22.3 40,20 36.8,22.3 37.9,18.7 35,16.6 38.8,16.6" fill="#fbbf24" opacity="0.9"/>
+      {/* Body */}
+      <ellipse cx="40" cy="50" rx="22" ry="20" fill="#a78bfa"/>
+      {/* Hair */}
+      <path d="M20 38 Q18 55 22 62" stroke="#581c87" strokeWidth="4" strokeLinecap="round" fill="none"/>
+      <path d="M60 38 Q62 55 58 62" stroke="#581c87" strokeWidth="4" strokeLinecap="round" fill="none"/>
+      {/* Eyes */}
+      <ellipse cx="34" cy="48" rx={happy ? 5 : 4} ry={happy ? 4 : 5} fill="#1e1b4b"/>
+      <ellipse cx="46" cy="48" rx={happy ? 5 : 4} ry={happy ? 4 : 5} fill="#1e1b4b"/>
+      <circle cx="35.5" cy="46.5" r="1.5" fill="#a78bfa"/>
+      <circle cx="47.5" cy="46.5" r="1.5" fill="#a78bfa"/>
+      {/* Mouth */}
+      {happy
+        ? <path d="M33 56 Q40 63 47 56" stroke="#1e1b4b" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        : sad
+          ? <path d="M34 60 Q40 54 46 60" stroke="#1e1b4b" strokeWidth="2" strokeLinecap="round" fill="none"/>
+          : <line x1="34" y1="57" x2="46" y2="57" stroke="#1e1b4b" strokeWidth="2" strokeLinecap="round"/>
+      }
+      {/* Sparkles */}
+      <circle cx="16" cy="44" r="2" fill="#fbbf24" opacity="0.7"/>
+      <circle cx="64" cy="48" r="1.5" fill="#fbbf24" opacity="0.6"/>
+      <circle cx="18" cy="54" r="1" fill="#e879f9" opacity="0.5"/>
+    </svg>
+  );
+}
+
+function AngryCloud({ size, mood }: { size: number; mood: AvatarMood }) {
+  const happy = mood === "correct";
+  const sad   = mood === "wrong";
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
+      {/* Cloud body */}
+      <circle cx="28" cy="42" r="16" fill="#bfdbfe"/>
+      <circle cx="40" cy="35" r="18" fill="#bfdbfe"/>
+      <circle cx="52" cy="42" r="15" fill="#bfdbfe"/>
+      <rect x="13" y="42" width="54" height="18" rx="2" fill="#bfdbfe"/>
+      {/* Angry brow */}
+      {!happy && <path d="M27 36 L36 39" stroke="#1d4ed8" strokeWidth="2.5" strokeLinecap="round"/>}
+      {!happy && <path d="M53 36 L44 39" stroke="#1d4ed8" strokeWidth="2.5" strokeLinecap="round"/>}
+      {/* Eyes */}
+      <ellipse cx="33" cy="42" rx={happy ? 5 : 4} ry={happy ? 4 : 5} fill="#1d4ed8"/>
+      <ellipse cx="47" cy="42" rx={happy ? 5 : 4} ry={happy ? 4 : 5} fill="#1d4ed8"/>
+      <circle cx="34.5" cy="40.5" r="1.5" fill="white"/>
+      <circle cx="48.5" cy="40.5" r="1.5" fill="white"/>
+      {/* Mouth */}
+      {happy
+        ? <path d="M32 52 Q40 60 48 52" stroke="#1d4ed8" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        : sad
+          ? <path d="M33 56 Q40 50 47 56" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" fill="none"/>
+          : <path d="M32 53 Q40 57 48 53" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      }
+      {/* Lightning bolts */}
+      <path d="M20 60 L17 68 L21 68 L18 76" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      <path d="M60 60 L57 68 L61 68 L58 76" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" fill="none"/>
+    </svg>
+  );
+}
+
+function CoolFox({ size, mood }: { size: number; mood: AvatarMood }) {
+  const happy = mood === "correct";
+  const sad   = mood === "wrong";
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
+      {/* Ears */}
+      <polygon points="20,14 14,30 30,28" fill="#f97316"/>
+      <polygon points="60,14 66,30 50,28" fill="#f97316"/>
+      <polygon points="22,18 17,28 28,27" fill="#fde68a"/>
+      <polygon points="58,18 63,28 52,27" fill="#fde68a"/>
+      {/* Body */}
+      <ellipse cx="40" cy="46" rx="24" ry="22" fill="#f97316"/>
+      {/* Muzzle */}
+      <ellipse cx="40" cy="54" rx="12" ry="8" fill="#fde68a"/>
+      {/* Eyes */}
+      <ellipse cx="33" cy="42" rx={happy ? 5.5 : 4.5} ry={happy ? 4.5 : 5.5} fill="#1c1917"/>
+      <ellipse cx="47" cy="42" rx={happy ? 5.5 : 4.5} ry={happy ? 4.5 : 5.5} fill="#1c1917"/>
+      <circle cx="35" cy="40" r="1.5" fill="white"/>
+      <circle cx="49" cy="40" r="1.5" fill="white"/>
+      {/* Nose */}
+      <ellipse cx="40" cy="52" rx="3" ry="2" fill="#1c1917"/>
+      {/* Mouth */}
+      {happy
+        ? <path d="M33 56 Q40 64 47 56" stroke="#1c1917" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        : sad
+          ? <path d="M34 60 Q40 54 46 60" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" fill="none"/>
+          : <line x1="34" y1="57" x2="46" y2="57" stroke="#1c1917" strokeWidth="2" strokeLinecap="round"/>
+      }
+      {/* Cheek patches */}
+      <ellipse cx="26" cy="48" rx="5" ry="3.5" fill="#fca5a5" opacity="0.5"/>
+      <ellipse cx="54" cy="48" rx="5" ry="3.5" fill="#fca5a5" opacity="0.5"/>
+    </svg>
+  );
+}
+
+function ZombieHead({ size, mood }: { size: number; mood: AvatarMood }) {
+  const happy = mood === "correct";
+  const sad   = mood === "wrong";
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
+      {/* Body */}
+      <ellipse cx="40" cy="44" rx="24" ry="22" fill="#86efac"/>
+      {/* Stitches on forehead */}
+      <line x1="32" y1="26" x2="36" y2="26" stroke="#166534" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="34" y1="24" x2="34" y2="28" stroke="#166534" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="44" y1="26" x2="48" y2="26" stroke="#166534" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="46" y1="24" x2="46" y2="28" stroke="#166534" strokeWidth="1.5" strokeLinecap="round"/>
+      {/* Eyes */}
+      <ellipse cx="33" cy="40" rx={happy ? 5 : 4.5} ry={happy ? 4 : 5} fill="#166534"/>
+      <ellipse cx="47" cy="40" rx={happy ? 5 : 4.5} ry={happy ? 4 : 5} fill="#166534"/>
+      <circle cx="34.5" cy="38.5" r="1.5" fill="#bbf7d0"/>
+      <circle cx="48.5" cy="38.5" r="1.5" fill="#bbf7d0"/>
+      {/* One X eye when sad */}
+      {sad && <><line x1="29.5" y1="36.5" x2="36.5" y2="43.5" stroke="#dcfce7" strokeWidth="1.5"/><line x1="36.5" y1="36.5" x2="29.5" y2="43.5" stroke="#dcfce7" strokeWidth="1.5"/></>}
+      {/* Mouth with teeth */}
+      <path d="M30 52 Q40 60 50 52" stroke="#166534" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      <rect x="35" y="51" width="3" height="5" rx="1" fill="white"/>
+      <rect x="39" y="51" width="3" height="5" rx="1" fill="white"/>
+      <rect x="43" y="51" width="3" height="5" rx="1" fill="white"/>
+      {/* Scars */}
+      <path d="M20 42 Q22 46 20 50" stroke="#166534" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+      <circle cx="60" cy="34" r="3" fill="#4ade80" opacity="0.4"/>
+    </svg>
+  );
+}
+
+function TinyDragon({ size, mood }: { size: number; mood: AvatarMood }) {
+  const happy = mood === "correct";
+  const sad   = mood === "wrong";
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
+      {/* Horns */}
+      <polygon points="28,16 24,6 32,14" fill="#fb923c"/>
+      <polygon points="52,16 56,6 48,14" fill="#fb923c"/>
+      {/* Wings (subtle) */}
+      <path d="M18 44 Q8 36 12 28 Q20 38 22 44Z" fill="#fdba74" opacity="0.7"/>
+      <path d="M62 44 Q72 36 68 28 Q60 38 58 44Z" fill="#fdba74" opacity="0.7"/>
+      {/* Body */}
+      <ellipse cx="40" cy="46" rx="22" ry="21" fill="#fb923c"/>
+      {/* Belly */}
+      <ellipse cx="40" cy="52" rx="13" ry="10" fill="#fde68a"/>
+      {/* Eyes */}
+      <ellipse cx="34" cy="40" rx={happy ? 5 : 4} ry={happy ? 4 : 5.5} fill="#431407"/>
+      <ellipse cx="46" cy="40" rx={happy ? 5 : 4} ry={happy ? 4 : 5.5} fill="#431407"/>
+      <circle cx="35.5" cy="38.5" r="1.5" fill="#fde68a"/>
+      <circle cx="47.5" cy="38.5" r="1.5" fill="#fde68a"/>
+      {/* Nostrils */}
+      <circle cx="37" cy="47" r="1.5" fill="#431407"/>
+      <circle cx="43" cy="47" r="1.5" fill="#431407"/>
+      {/* Mouth */}
+      {happy
+        ? <path d="M32 55 Q40 63 48 55" stroke="#431407" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        : sad
+          ? <path d="M33 59 Q40 53 47 59" stroke="#431407" strokeWidth="2" strokeLinecap="round" fill="none"/>
+          : <line x1="33" y1="56" x2="47" y2="56" stroke="#431407" strokeWidth="2" strokeLinecap="round"/>
+      }
+      {/* Fire breath when happy */}
+      {happy && <><ellipse cx="40" cy="68" rx="5" ry="3" fill="#fbbf24" opacity="0.8"/><ellipse cx="40" cy="66" rx="3" ry="2" fill="#f97316" opacity="0.6"/></>}
+    </svg>
+  );
+}
+
+function GloomBear({ size, mood }: { size: number; mood: AvatarMood }) {
+  const happy = mood === "correct";
+  const sad   = mood === "wrong";
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
+      {/* Ears */}
+      <circle cx="22" cy="24" r="11" fill="#6366f1"/>
+      <circle cx="58" cy="24" r="11" fill="#6366f1"/>
+      <circle cx="22" cy="24" r="6" fill="#818cf8"/>
+      <circle cx="58" cy="24" r="6" fill="#818cf8"/>
+      {/* Body */}
+      <ellipse cx="40" cy="48" rx="24" ry="22" fill="#6366f1"/>
+      {/* Muzzle */}
+      <ellipse cx="40" cy="56" rx="12" ry="8" fill="#818cf8"/>
+      {/* Cloud/rain on forehead — always gloomy */}
+      <path d="M33 30 Q40 24 47 30 Q50 34 47 36 Q40 38 33 36 Q30 34 33 30Z" fill="#c7d2fe" opacity="0.6"/>
+      <line x1="35" y1="37" x2="34" y2="41" stroke="#a5b4fc" strokeWidth="1.2" strokeLinecap="round"/>
+      <line x1="39" y1="38" x2="38" y2="43" stroke="#a5b4fc" strokeWidth="1.2" strokeLinecap="round"/>
+      <line x1="43" y1="37" x2="42" y2="41" stroke="#a5b4fc" strokeWidth="1.2" strokeLinecap="round"/>
+      {/* Eyes */}
+      <ellipse cx="34" cy="44" rx={happy ? 5 : 4} ry={happy ? 4 : 5} fill="#1e1b4b"/>
+      <ellipse cx="46" cy="44" rx={happy ? 5 : 4} ry={happy ? 4 : 5} fill="#1e1b4b"/>
+      <circle cx="35.5" cy="42.5" r="1.5" fill="#a5b4fc"/>
+      <circle cx="47.5" cy="42.5" r="1.5" fill="#a5b4fc"/>
+      {/* Nose */}
+      <ellipse cx="40" cy="54" rx="3" ry="2" fill="#1e1b4b"/>
+      {/* Mouth */}
+      {happy
+        ? <path d="M33 59 Q40 67 47 59" stroke="#1e1b4b" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        : sad
+          ? <path d="M34 63 Q40 57 46 63" stroke="#1e1b4b" strokeWidth="2" strokeLinecap="round" fill="none"/>
+          : <path d="M34 61 Q40 63 46 61" stroke="#1e1b4b" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+      }
+    </svg>
+  );
+}
+
 const SVG_MAP: Record<string, React.FC<{ size: number; mood: AvatarMood }>> = {
   ghost:   GlitchGhost,
   gremlin: TinyGremlin,
@@ -517,6 +730,12 @@ const SVG_MAP: Record<string, React.FC<{ size: number; mood: AvatarMood }>> = {
   shroom:  AngryShroom,
   robo:    RobotCube,
   cat:     ShadowCat,
+  witch:   TinyWitch,
+  cloud:   AngryCloud,
+  fox:     CoolFox,
+  zombie:  ZombieHead,
+  dragon:  TinyDragon,
+  bear:    GloomBear,
 };
 
 // ── Main Avatar Component ─────────────────────────────────────────────────────

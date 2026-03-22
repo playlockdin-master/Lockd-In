@@ -223,10 +223,10 @@ export function useSocket() {
     // Fix #3 — server kicked this player
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
-      // Immediately navigate away from the room URL so the player can't
-      // simply refresh to re-join. Replace history so Back button doesn't
-      // return them to the room.
-      window.history.replaceState(null, '', '/');
+      // Do NOT replace URL here — wouter reads the URL to decide which
+      // component renders. Replacing to '/' immediately unmounts GameRoom
+      // before the kicked screen can show. The redirect happens when the
+      // player clicks "Back to Home" in the wasKicked screen.
       setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
     });
 

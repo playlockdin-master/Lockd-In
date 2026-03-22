@@ -74,6 +74,7 @@ function isUnusableTopic(topic: string): boolean {
 // Fix #14 — known valid avatar IDs (must stay in sync with client/src/components/Avatar.tsx)
 const VALID_AVATAR_IDS = new Set([
   'ghost','gremlin','blob','egg','demon','brain','astro','duck','skull','shroom','robo','cat',
+  'witch','cloud','fox','zombie','dragon','bear',
 ]);
 
 const MAX_ROOMS = 500; // prevent runaway room creation
