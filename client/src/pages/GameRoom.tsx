@@ -194,38 +194,36 @@ export default function GameRoom() {
     }
   }, [room?.code, code, setLocation]);
 
-  // Capture the topic selector name for the RoundTransition overlay.
-  // We capture it when the transition fires (status becomes topic_selection for
-  // a new round) — at that moment topicSelectorId is the player who will pick
-  // the topic for THIS round, which is exactly what we want to display.
+  // Track selector name while in topic_selection, then fire the transition
+  // overlay when status moves to 'question' (topic has just been confirmed).
+  const lastTopicRef = useRef<string>('');
   const prevStatusForSelectorRef = useRef<string | null>(null);
   useEffect(() => {
     if (!room) return;
     const prev = prevStatusForSelectorRef.current;
     prevStatusForSelectorRef.current = room.status;
 
-    // Capture at topic_selection start (when the transition overlay fires)
-    if (room.status === 'topic_selection' && prev !== 'topic_selection' && room.topicSelectorId) {
+    // Keep selector name fresh while picker is choosing
+    if (room.status === 'topic_selection' && room.topicSelectorId) {
       const name = room.players.find(p => p.id === room.topicSelectorId)?.name ?? '';
       if (name) lastSelectorNameRef.current = name;
     }
-  }, [room?.status, room?.topicSelectorId]);
 
-  // Show round transition when a new round starts.
-  // prevRoundRef starts as null so the very first gameState snapshot (including
-  // late-joiners who land mid-game) seeds the ref without triggering the overlay.
+    // Fire overlay the moment topic_selection → question (topic is now known)
+    if (room.status === 'question' && prev === 'topic_selection' && room.currentTopic) {
+      lastTopicRef.current = room.currentTopic;
+      setShowTransition(true);
+    }
+  }, [room?.status, room?.topicSelectorId, room?.currentTopic]);
+
+  // Seed prevRoundRef / prevStatusRef on every update (kept for future use,
+  // no longer drives the transition trigger).
   useEffect(() => {
     if (!room) return;
     if (prevRoundRef.current === null) {
-      // First snapshot — just seed, never animate
       prevStatusRef.current = room.status;
       prevRoundRef.current = room.currentRound;
       return;
-    }
-    const wasNotTopicSelection = prevStatusRef.current !== 'topic_selection';
-    const isNewRound = room.currentRound > prevRoundRef.current;
-    if (room.status === 'topic_selection' && wasNotTopicSelection && isNewRound && room.currentRound > 1) {
-      setShowTransition(true);
     }
     prevStatusRef.current = room.status;
     prevRoundRef.current = room.currentRound;
@@ -449,6 +447,7 @@ export default function GameRoom() {
         round={room.currentRound}
         totalRounds={room.mode === 'round' ? room.target : undefined}
         selectorName={lastSelectorNameRef.current}
+        topic={lastTopicRef.current}
         onDone={handleTransitionDone}
       />
 

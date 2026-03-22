@@ -6,14 +6,15 @@ interface Props {
   round: number;
   totalRounds?: number;
   selectorName: string;
+  topic: string;
   visible: boolean;
   onDone: () => void;
 }
 
-export function RoundTransition({ round, totalRounds, selectorName, visible, onDone }: Props) {
+export function RoundTransition({ round, totalRounds, selectorName, topic, visible, onDone }: Props) {
   useEffect(() => {
     if (!visible) return;
-    const t = setTimeout(onDone, 2200);
+    const t = setTimeout(onDone, 2800);
     return () => clearTimeout(t);
   }, [visible, onDone]);
 
@@ -63,6 +64,18 @@ export function RoundTransition({ round, totalRounds, selectorName, visible, onD
               <p className="text-white/50 text-sm md:text-base uppercase tracking-widest mb-1">Topic chosen by</p>
               <p className="text-white font-display font-black text-2xl md:text-4xl">{selectorName}</p>
             </motion.div>
+
+            {/* Topic name */}
+            {topic && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.5, type: "spring", stiffness: 260, damping: 20 }}
+                className="px-6 py-2 rounded-full bg-white/10 border border-white/20"
+              >
+                <p className="text-white font-bold text-lg md:text-2xl tracking-wide">{topic}</p>
+              </motion.div>
+            )}
 
             {/* Animated bar sweeping across */}
             <motion.div

@@ -181,7 +181,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
             : <><TrendingDown className="w-3 h-3" />#{myRank}</>}
         </span>
         <div className="ml-auto shrink-0">
-          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 18} />
+          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 25} />
         </div>
       </div>
 

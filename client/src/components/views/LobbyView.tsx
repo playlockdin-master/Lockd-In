@@ -25,7 +25,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   const mode   = room.mode;
   const target = room.target;
   const topicTimeSecs    = room.topicTimeSecs    ?? 25;
-  const questionTimeSecs = room.questionTimeSecs ?? 18;
+  const questionTimeSecs = room.questionTimeSecs ?? 25;
 
   const [localTopicTime,    setLocalTopicTime]    = useState(topicTimeSecs);
   const [localQuestionTime, setLocalQuestionTime] = useState(questionTimeSecs);

@@ -160,9 +160,9 @@ export type GameStateStatus = 'lobby' | 'topic_selection' | 'question' | 'result
 
 // Shared timer durations — defaults and limits
 export const TOPIC_TIME_SECONDS = 25;
-export const QUESTION_TIME_SECONDS = 18;
+export const QUESTION_TIME_SECONDS = 25;
 
-export const TOPIC_TIME_MIN = 25;
+export const TOPIC_TIME_MIN = 15;
 export const TOPIC_TIME_MAX = 60;
 export const QUESTION_TIME_MIN = 15;
 export const QUESTION_TIME_MAX = 60;
