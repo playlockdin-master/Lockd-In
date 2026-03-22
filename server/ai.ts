@@ -432,7 +432,7 @@ function buildUserPrompt(
 
   // Pass actual question text so the AI avoids the same facts, not just the same topics
   const usedQuestions = askedQuestions.length
-    ? `Already asked these questions — do NOT ask about the same facts, people, or events:\n${askedQuestions.map((q) => `- ${q}`).join("\n")}\n`
+    ? `Already asked these questions — do NOT repeat the same facts, people, or events:\n${askedQuestions.slice(-30).map((q) => `- ${q}`).join("\n")}\n`
     : "";
 
   const regionBlock = regionContext
@@ -800,7 +800,7 @@ export async function generateQuestion(
   const difficulty  = difficultyOverride ?? getTargetDifficulty(roomId);
   const attemptNum  = MAX_RETRIES - retries;
   const temperature = Math.min(BASE_TEMP + attemptNum * 0.1, 0.9);
-  const userPrompt  = buildUserPrompt(safeTopic, difficulty, specificity, recentAngles.slice(-8), askedQuestions.slice(-10), regionContext);
+  const userPrompt  = buildUserPrompt(safeTopic, difficulty, specificity, recentAngles.slice(-8), askedQuestions, regionContext);
   const messages    = [
     { role: "system", content: SYSTEM_INSTRUCTION },
     { role: "user",   content: userPrompt },
@@ -828,6 +828,17 @@ export async function generateQuestion(
 
     const validated = QuestionResponseSchema.parse(parsed);
     validateQuestion(validated);
+
+    // Extra dedup check — if this question text was already asked this game, retry
+    const fingerprint = validated.text.slice(0, 80).toLowerCase().trim();
+    const alreadyAsked = askedQuestions.some(q => q.slice(0, 80).toLowerCase().trim() === fingerprint);
+    if (alreadyAsked && retries > 0) {
+      clearTimeout(timeoutId);
+      console.warn(`[dedup] duplicate question detected for topic="${safeTopic}" — retrying`);
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
+      return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext);
+    }
+
     recordDifficulty(roomId, validated.difficulty);
     addToCache(safeTopic, validated);
     const shuffled = shuffleOptions(validated);
@@ -860,36 +871,35 @@ export async function generateQuestion(
 // ---------------------------------------------------------------------------
 
 export async function generateQuestionsForPresetMode(
-  topics: string[],     // pool of all player-submitted topics
-  totalRounds: number,  // how many questions to generate
+  topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[],
+  totalRounds: number,
   roomId: string,
   regionContext?: string,
 ): Promise<(Question & { topic: string })[]> {
   if (topics.length === 0) throw new Error('No topics provided');
 
-  // Cycle topics to fill all rounds
-  const topicSequence: string[] = [];
+  // Cycle topics to fill all rounds, preserving difficulty per entry
+  const topicSequence: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[] = [];
   for (let i = 0; i < totalRounds; i++) {
     topicSequence.push(topics[i % topics.length]);
   }
 
-  // Generate all questions in parallel (respects provider fallback per call)
+  // Generate all questions in parallel, each with its specified difficulty
   const askedQuestions: string[] = [];
   const results = await Promise.all(
-    topicSequence.map(async (topic, idx) => {
-      // Stagger slightly to avoid hammering a single provider simultaneously
+    topicSequence.map(async (entry, idx) => {
       if (idx > 0) await new Promise(r => setTimeout(r, idx * 80));
       const question = await generateQuestion(
-        topic,
+        entry.topic,
         [],
         roomId,
         undefined,
-        undefined,
+        entry.difficulty,
         askedQuestions,
         regionContext,
       );
       askedQuestions.push(question.text);
-      return { ...question, topic: question.canonicalTopic || topic };
+      return { ...question, topic: question.canonicalTopic || entry.topic };
     })
   );
 

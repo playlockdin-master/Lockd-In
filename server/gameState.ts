@@ -443,6 +443,9 @@ export function setupGameSockets(io: Server) {
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
+      // Sync topicMode from mode
+      if (mode === 'preset') room.topicMode = 'preset';
+      else room.topicMode = 'live';
       // Validate and apply timer overrides if provided
       if (typeof topicTimeSecs === 'number' && topicTimeSecs >= TOPIC_TIME_MIN && topicTimeSecs <= TOPIC_TIME_MAX) {
         room.topicTimeSecs = topicTimeSecs;
@@ -489,6 +492,8 @@ export function setupGameSockets(io: Server) {
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
+      if (mode === 'preset') room.topicMode = 'preset';
+      else room.topicMode = 'live';
       if (typeof topicTimeSecs === 'number' && topicTimeSecs >= TOPIC_TIME_MIN && topicTimeSecs <= TOPIC_TIME_MAX) {
         room.topicTimeSecs = topicTimeSecs;
       }
@@ -518,32 +523,32 @@ export function setupGameSockets(io: Server) {
         p.streak = 0;
       });
 
-      if (room.mode === 'preset') {
-        // Collect all submitted topics from all players
-        const allTopics = Object.values(room.presetTopics ?? {}).flat().filter(t => t.trim().length > 0);
-        if (allTopics.length === 0) {
-          socket.emit('error', { message: 'No topics submitted yet. Each player must submit at least 1 topic.' });
+      if (room.topicMode === 'preset') {
+        // Collect all submitted topics — {topic, difficulty} objects
+        const allTopicEntries = Object.values(room.presetTopics ?? {}).flat();
+        // Host must have submitted topics; others are optional
+        const host = room.players.find(p => p.isHost);
+        const hostTopics = host ? (room.presetTopics?.[host.id] ?? []) : [];
+        if (hostTopics.length === 0) {
+          socket.emit('error', { message: 'Host must submit at least 1 topic before starting.' });
           room.status = 'lobby';
           room.currentRound = 0;
           room.players.forEach(p => { p.score = 0; p.streak = 0; });
           io.to(room.code).emit('gameState', serializeRoom(room));
           return;
         }
-        // Check that all players have submitted at least 1 topic
-        const playersWithoutTopics = room.players.filter(p => {
-          const submitted = room.presetTopics?.[p.id] ?? [];
-          return submitted.length === 0;
-        });
-        if (playersWithoutTopics.length > 0) {
-          const names = playersWithoutTopics.map(p => p.name).join(', ');
-          socket.emit('error', { message: `Waiting for topics from: ${names}` });
+        // Check all players have either submitted OR explicitly passed (submitted empty)
+        const playersNotYetSubmitted = room.players.filter(p => room.presetTopics?.[p.id] === undefined);
+        if (playersNotYetSubmitted.length > 0) {
+          const names = playersNotYetSubmitted.map(p => p.name).join(', ');
+          socket.emit('error', { message: `Still waiting for: ${names} (they can submit 0 topics to skip)` });
           room.status = 'lobby';
           room.currentRound = 0;
           room.players.forEach(p => { p.score = 0; p.streak = 0; });
           io.to(room.code).emit('gameState', serializeRoom(room));
           return;
         }
-        startPresetMode(room, io, allTopics);
+        startPresetMode(room, io, allTopicEntries);
       } else {
         startTopicSelection(room, io);
       }
@@ -623,14 +628,20 @@ export function setupGameSockets(io: Server) {
       const player = room.players.find(p => p.id === socket.id);
       if (!player) return;
       if (!Array.isArray(topics)) return;
-      // Validate: 1–5 topics, each a non-empty string, no profanity
-      const cleaned: string[] = topics
-        .filter((t: any) => typeof t === 'string' && t.trim().length >= 2)
-        .map((t: string) => t.trim().slice(0, 50))
-        .filter((t: string) => !containsProfanity(t))
+      const validDifficulties = ['Easy', 'Medium', 'Hard'];
+      // Validate: 1–5 topics with optional difficulty, no profanity
+      const cleaned: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[] = topics
+        .filter((t: any) => t && typeof t.topic === 'string' && t.topic.trim().length >= 2)
+        .map((t: any) => ({
+          topic: t.topic.trim().slice(0, 50),
+          difficulty: validDifficulties.includes(t.difficulty) ? t.difficulty : 'Medium',
+        }))
+        .filter((t: any) => !containsProfanity(t.topic))
         .slice(0, 5);
-      if (cleaned.length === 0) {
-        socket.emit('error', { message: 'Please enter at least 1 valid topic.' });
+      // Host must have >= 1 topic; others can submit 0 (empty array means done)
+      const isHost = player.isHost;
+      if (isHost && cleaned.length === 0) {
+        socket.emit('error', { message: 'As host, please add at least 1 topic.' });
         return;
       }
       if (!room.presetTopics) room.presetTopics = {};
@@ -864,6 +875,7 @@ function resetRoomToLobby(room: Room, io: Server) {
   room.viewingResultsIds = [];
   room.presetTopics = {};
   room.pregeneratedQuestions = [];
+  room.topicMode = 'live';
   room.players.forEach((p) => {
     p.score = 0;
     p.streak = 0;
@@ -905,6 +917,7 @@ function serializeRoom(room: Room): object {
     regionMode:   room.regionMode ?? "global",
     regionId:     room.regionId,
     countryCode:  room.countryCode,
+    topicMode: room.topicMode ?? 'live',
     presetTopics: room.presetTopics ?? {},
     pregeneratedQuestionsCount: (room.pregeneratedQuestions ?? []).length,
   };
@@ -1060,7 +1073,7 @@ function handleDisconnect(socketId: string, io: Server, saveGhostOnLeave = true)
   }
 }
 
-async function startPresetMode(room: Room, io: Server, allTopics: string[]) {
+async function startPresetMode(room: Room, io: Server, allTopics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) {
   const liveRoom = rooms.get(room.code);
   if (!liveRoom || liveRoom.players.length === 0) return;
   room = liveRoom;
@@ -1257,8 +1270,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     // Track asked question text for within-game deduplication
     if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
     liveRoom.askedQuestions.push(question.text);
-    // Cap at 50 to prevent unbounded growth in long score-mode games
-    if (liveRoom.askedQuestions.length > 50) liveRoom.askedQuestions.shift();
+    // No cap — keep all questions for full-game deduplication
     // Use the AI's canonical topic label if provided (corrects typos & abbreviations like "ch3ss" → "Chess")
     if (question.canonicalTopic?.trim()) {
       liveRoom.currentTopic = question.canonicalTopic.trim();

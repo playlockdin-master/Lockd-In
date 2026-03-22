@@ -187,6 +187,7 @@ export interface Room {
   players: Player[];
   status: GameStateStatus;
   mode: 'round' | 'score' | 'preset';
+  topicMode?: 'live' | 'preset'; // 'live' = players type topic each round, 'preset' = topics submitted upfront
   target: number; // e.g. 10 or 20 for round mode, 1000 or 2000 for score mode
   topicTimeSecs: number;    // host-configured topic selection timer (25–60s)
   questionTimeSecs: number; // host-configured answer timer (15–60s)
@@ -205,7 +206,7 @@ export interface Room {
   viewingResultsIds?: string[]; // players still on podium screen, haven't clicked play again
   askedQuestions?: string[]; // fingerprints of questions asked this game — used for deduplication
   // Preset mode fields
-  presetTopics?: Record<string, string[]>; // playerId → topics submitted
+  presetTopics?: Record<string, { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]>; // playerId → topics submitted with difficulty
   pregeneratedQuestions?: (Question & { topic: string })[]; // all pre-generated questions for preset mode
   // Region system — controls cultural context injected into AI question generation
   regionMode?: RegionMode;    // 'global' (no bias) | 'regional' (biased to region)

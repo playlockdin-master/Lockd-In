@@ -268,7 +268,7 @@ export function useSocket() {
     socketRef.current.emit('selectTopic', { topic, ...(difficulty ? { difficulty } : {}) });
   }, []);
 
-  const submitPresetTopics = useCallback((topics: string[]) => {
+  const submitPresetTopics = useCallback((topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) => {
     if (!socketRef.current) return;
     socketRef.current.emit('submitPresetTopics', { topics });
   }, []);
