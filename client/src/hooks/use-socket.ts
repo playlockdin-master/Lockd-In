@@ -16,24 +16,27 @@ function track(eventName: string, params?: Record<string, string | number | bool
   }
 }
 
+export interface TopicStat {
+  topic: string;
+  correct: number;
+  total: number;
+}
+
 export interface GameState {
   room: Room | null;
   me: Player | null;
   isConnected: boolean;
   error: string | null;
-  // Fix #2: true when the server restarted and wiped this room from memory.
-  // Distinct from a normal error so the UI can show a helpful "session ended" screen.
   serverRestarted: boolean;
-  // Fix #5: true when the server emits roomExpired (30s before room deletion)
   roomExpired: boolean;
-  // Fix #5b: true while socket is disconnected and attempting to reconnect
   isReconnecting: boolean;
-  // true when host kicked this player — shows a dedicated screen instead of re-join modal
   wasKicked: boolean;
   kickMessage: string | null;
   topicRejection: { badTopic: string; reason: string; newTopic: string } | null;
   topicSuggestions: string[];
   loadingSuggestions: boolean;
+  topicStats: TopicStat[]; // per-topic accuracy for current player
+  bestStreak: number;      // highest streak reached this game
 }
 
 export function useSocket() {
@@ -50,6 +53,8 @@ export function useSocket() {
     topicRejection: null,
     topicSuggestions: [],
     loadingSuggestions: false,
+    topicStats: [],
+    bestStreak: 0,
   });
   
   const [connectTimeout, setConnectTimeout] = useState(false);
@@ -105,7 +110,10 @@ export function useSocket() {
         const avatarId   = sessionStorage.getItem('avatarId') ?? 'ghost';
         const match = window.location.pathname.match(/\/room\/([A-Z0-9]+)/i);
         const roomCode = match?.[1];
-        if (playerName && roomCode && roomCode.toLowerCase() !== 'new') {
+        // Don't re-join if the player was kicked (identity already cleared,
+        // URL already replaced with '/' — but guard here too for safety)
+        const wasKickedAlready = !playerName;
+        if (playerName && roomCode && roomCode.toLowerCase() !== 'new' && !wasKickedAlready) {
           newSocket.emit('joinRoom', { playerName, roomCode: roomCode.toUpperCase(), avatarId });
         }
       }
@@ -152,6 +160,34 @@ export function useSocket() {
           });
         }
 
+        // ── Per-topic accuracy tracking ──────────────────────────────────────
+        // When status transitions FROM 'question' TO 'results', the round just ended.
+        // At this point me.lastAnswerCorrect reflects this round's result.
+        let topicStats = prev.topicStats;
+        let bestStreak = prev.bestStreak;
+        if (prevStatus === 'question' && nextStatus === 'results' && roomData.currentTopic && me) {
+          const topic = roomData.currentTopic;
+          const wasCorrect = me.lastAnswerCorrect === true;
+          const answered   = me.lastAnswerCorrect !== undefined;
+          const existing   = topicStats.find(s => s.topic === topic);
+          if (existing) {
+            topicStats = topicStats.map(s =>
+              s.topic === topic
+                ? { ...s, correct: s.correct + (wasCorrect ? 1 : 0), total: s.total + (answered ? 1 : 0) }
+                : s
+            );
+          } else {
+            topicStats = [...topicStats, { topic, correct: wasCorrect ? 1 : 0, total: answered ? 1 : 0 }];
+          }
+          bestStreak = Math.max(bestStreak, me.streak);
+        }
+
+        // Reset stats on new game (lobby after ended)
+        if (prevStatus === 'ended' && nextStatus === 'lobby') {
+          topicStats = [];
+          bestStreak = 0;
+        }
+
         if (prevStatus !== 'ended' && nextStatus === 'ended') {
           // Game finished — most important event
           track('game_completed', {
@@ -167,7 +203,7 @@ export function useSocket() {
           track('play_again', { players: roomData.players.length });
         }
 
-        return { ...prev, room: roomData, me, error: null, topicRejection, topicSuggestions, loadingSuggestions };
+        return { ...prev, room: roomData, me, error: null, topicRejection, topicSuggestions, loadingSuggestions, topicStats, bestStreak };
       });
     });
 
@@ -187,6 +223,10 @@ export function useSocket() {
     // Fix #3 — server kicked this player
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
+      // Immediately navigate away from the room URL so the player can't
+      // simply refresh to re-join. Replace history so Back button doesn't
+      // return them to the room.
+      window.history.replaceState(null, '', '/');
       setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
     });
 

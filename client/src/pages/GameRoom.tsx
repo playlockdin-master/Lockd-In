@@ -15,7 +15,7 @@ import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, Share2 } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 import { FlooqLogo } from "@/components/FlooqLogo";
@@ -144,7 +144,7 @@ export default function GameRoom() {
 
   const {
     room, me, isConnected, isReconnecting, connectTimeout, error, topicRejection, topicSuggestions, loadingSuggestions,
-    serverRestarted, roomExpired, wasKicked, kickMessage,
+    serverRestarted, roomExpired, wasKicked, kickMessage, topicStats, bestStreak,
     joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings,
     updateAvatar, resetGame, playAgain, clearError, clearTopicRejection, requestTopicSuggestions,
     clearServerRestarted, clearRoomExpired, clearWasKicked, kickPlayer,
@@ -193,20 +193,22 @@ export default function GameRoom() {
     }
   }, [room?.code, code, setLocation]);
 
-  // Capture selector name the moment status flips TO 'question'.
-  // We only depend on room?.status — NOT topicSelectorId — so a subsequent
-  // topicSelectorId rotation (for the next round) can't overwrite the ref
-  // before the RoundTransition overlay has had a chance to read it.
+  // Capture the topic selector name for the RoundTransition overlay.
+  // We capture it when the transition fires (status becomes topic_selection for
+  // a new round) — at that moment topicSelectorId is the player who will pick
+  // the topic for THIS round, which is exactly what we want to display.
   const prevStatusForSelectorRef = useRef<string | null>(null);
   useEffect(() => {
     if (!room) return;
     const prev = prevStatusForSelectorRef.current;
     prevStatusForSelectorRef.current = room.status;
-    if (room.status === 'question' && prev !== 'question' && room.topicSelectorId) {
+
+    // Capture at topic_selection start (when the transition overlay fires)
+    if (room.status === 'topic_selection' && prev !== 'topic_selection' && room.topicSelectorId) {
       const name = room.players.find(p => p.id === room.topicSelectorId)?.name ?? '';
       if (name) lastSelectorNameRef.current = name;
     }
-  }, [room?.status]);
+  }, [room?.status, room?.topicSelectorId]);
 
   // Show round transition when a new round starts.
   // prevRoundRef starts as null so the very first gameState snapshot (including
@@ -327,7 +329,7 @@ export default function GameRoom() {
       case 'results':
         return <ResultsView key={`results-${room.currentRound}`} room={room} me={me} />;
       case 'ended':
-        return <PodiumView key="ended" room={room} me={me} onPlayAgain={playAgain} onLeave={handleConfirmExit} />;
+        return <PodiumView key="ended" room={room} me={me} onPlayAgain={playAgain} onLeave={handleConfirmExit} topicStats={topicStats} bestStreak={bestStreak} />;
       default:
         return <div key="default" className="text-white">Unknown state</div>;
     }
@@ -432,9 +434,23 @@ export default function GameRoom() {
 
       {/* Top Bar */}
       <header className="sticky top-0 z-40 flex items-center justify-between px-3 py-2 md:px-6 md:py-3 bg-black/50 backdrop-blur-md border-b border-white/5 shrink-0 min-w-0 overflow-hidden">
-        {/* Left: logo + leave */}
+        {/* Left: logo + share + leave */}
         <div className="flex items-center gap-1.5 shrink-0">
           <FlooqLogo size="sm" />
+          {room && (
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/room/${room.code}`;
+                if (navigator.share) { navigator.share({ title: 'Join my Flooq room!', url }).catch(() => {}); }
+                else { navigator.clipboard?.writeText(url).catch(() => {}); }
+              }}
+              title="Share room link"
+              className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-white/30 hover:text-primary hover:bg-primary/10 transition-colors text-xs font-medium"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-xs font-mono text-white/40">{room.code}</span>
+            </button>
+          )}
           <button
             onClick={handleExit}
             title="Leave room"

@@ -169,6 +169,28 @@ export default function Home() {
             </div>
           </div>
         </Card>
+
+        {/* How it works — 3 steps */}
+        <motion.div
+          className="max-w-md mx-auto w-full mt-6 md:mt-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
+        >
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { icon: "🎯", step: "1", title: "Pick a topic", desc: "Chess, Bollywood, Brawlhalla — anything" },
+              { icon: "⚡", step: "2", title: "AI generates", desc: "A question only real fans get right" },
+              { icon: "🏆", step: "3", title: "Race to answer", desc: "15 seconds. Speed + accuracy = points" },
+            ].map(({ icon, step, title, desc }) => (
+              <div key={step} className="glass-panel rounded-2xl p-3 text-center flex flex-col items-center gap-1.5">
+                <span className="text-2xl">{icon}</span>
+                <p className="text-white text-xs font-bold">{title}</p>
+                <p className="text-white/40 text-[10px] leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
       </div>
     </div>
   );

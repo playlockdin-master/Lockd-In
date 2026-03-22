@@ -23,7 +23,7 @@ const POOL_SIZES: Partial<Record<SoundType, number>> = { tick: 3, click: 2 };
 const SFX_FADE_OUT_MS = 120;
 const SFX_MUTE_KEY    = 'flooq_sfx_muted';
 const BGM_MUTE_KEY    = 'flooq_bgm_muted';
-const BGM_URL         = '/assets/ambient-bgm.wav';
+const BGM_URL         = '/assets/ambient-bgm.wav'; // mp3 preferred on iOS but wav used as fallback
 const BGM_VOLUME      = 0.12;
 const BGM_FADE_STEPS  = 40;
 const BGM_FADE_MS     = 1500;
@@ -141,6 +141,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       bgm.loop    = true;
       bgm.preload = 'auto';
       bgm.volume  = 0;
+      // iOS Safari requires playsInline to prevent fullscreen audio takeover
+      (bgm as any).playsInline = true;
+      bgm.setAttribute('playsinline', '');
       bgmRef.current = bgm;
 
       if (!isBgmMutedRef.current) {

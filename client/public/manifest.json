@@ -1,0 +1,25 @@
+{
+  "name": "Flooq — Multiplayer Trivia",
+  "short_name": "Flooq",
+  "description": "Fast-paced multiplayer trivia. Pick ANY topic. 15 seconds. No mercy.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07070E",
+  "theme_color": "#7C3AED",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["games", "entertainment"],
+  "lang": "en"
+}

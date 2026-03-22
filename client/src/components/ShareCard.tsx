@@ -1,0 +1,366 @@
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { Share2, X, Copy, Check } from "lucide-react";
+import { Button } from "./Button";
+import { type TopicStat } from "@/hooks/use-socket";
+import { type Player, type Room } from "@shared/schema";
+
+interface Props {
+  me: Player;
+  room: Room;
+  topicStats: TopicStat[];
+  bestStreak: number;
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function myRank(room: Room, me: Player): number {
+  const sorted = [...room.players].sort((a, b) => b.score - a.score);
+  return sorted.findIndex(p => p.id === me.id) + 1;
+}
+
+function accuracy(stats: TopicStat[]): number {
+  const total   = stats.reduce((s, t) => s + t.total,   0);
+  const correct = stats.reduce((s, t) => s + t.correct, 0);
+  return total === 0 ? 0 : Math.round((correct / total) * 100);
+}
+
+function rankLabel(rank: number): string {
+  if (rank === 1) return "🥇 Winner";
+  if (rank === 2) return "🥈 2nd place";
+  if (rank === 3) return "🥉 3rd place";
+  return `#${rank}`;
+}
+
+// ── Passport card (Concept A) — rendered into a hidden div then shared ───────
+function PassportCard({ me, room, topicStats, bestStreak }: Props) {
+  const rank = myRank(room, me);
+  const acc  = accuracy(topicStats);
+  const displayStats = topicStats.slice(0, 6); // max 6 topics in grid
+
+  return (
+    <div style={{
+      background: "#0D0D1A",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 20,
+      padding: 24,
+      width: 380,
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 22, fontWeight: 900, letterSpacing: -1 }}>
+          <span style={{ color: "white" }}>f</span>
+          <span style={{ color: "#A855F7" }}>l</span>
+          <span style={{ color: "white" }}>oo</span>
+          <span style={{ color: "#A855F7" }}>q</span>
+        </div>
+        <div style={{
+          background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.3)",
+          borderRadius: 20, padding: "4px 12px",
+          fontSize: 11, fontWeight: 600, color: "#A855F7", letterSpacing: 1,
+        }}>
+          {rankLabel(rank)}
+        </div>
+      </div>
+
+      {/* Name */}
+      <div style={{ fontFamily: "'Outfit', sans-serif", fontWeight: 900, fontSize: 26, color: "white", marginBottom: 2 }}>
+        {me.name}
+      </div>
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 18, letterSpacing: 1 }}>
+        {room.players.length} PLAYERS · {room.currentRound} ROUNDS
+      </div>
+
+      {/* Topic grid */}
+      {displayStats.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 18 }}>
+          {displayStats.map(s => {
+            const pct = s.total === 0 ? 0 : s.correct / s.total;
+            const isStreak = pct === 1 && s.total > 0;
+            const color = pct === 1 ? "#34D399" : pct >= 0.5 ? "white" : "#F87171";
+            const bg    = pct === 1 ? "rgba(52,211,153,0.08)"
+                        : pct === 0 ? "rgba(248,113,113,0.08)"
+                        : "rgba(255,255,255,0.05)";
+            return (
+              <div key={s.topic} style={{
+                background: bg,
+                border: `1px solid ${pct === 1 ? "rgba(52,211,153,0.2)" : pct === 0 ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 10, padding: "8px 6px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.topic}
+                </div>
+                <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 700, color }}>
+                  {isStreak ? `★ ${s.correct}/${s.total}` : `${s.correct}/${s.total}`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Stats row */}
+      <div style={{
+        display: "flex", gap: 12,
+        paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)",
+      }}>
+        {[
+          { val: me.score.toString(),    lbl: "SCORE"       },
+          { val: `x${bestStreak}`,       lbl: "BEST STREAK" },
+          { val: `${acc}%`,              lbl: "ACCURACY"    },
+        ].map(({ val, lbl }) => (
+          <div key={lbl} style={{ flex: 1, textAlign: "center" }}>
+            <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 22, fontWeight: 900, color: "white" }}>{val}</div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", letterSpacing: 1, marginTop: 2 }}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ textAlign: "center", marginTop: 14, fontSize: 10, color: "rgba(168,85,247,0.45)", letterSpacing: 1 }}>
+        flooq.up.railway.app
+      </div>
+    </div>
+  );
+}
+
+// ── Streak brag card (Concept B) ─────────────────────────────────────────────
+function StreakCard({ me, room, topicStats, bestStreak }: Props) {
+  // Find which topics the streak happened on — topics where player got 100%
+  const hotTopics = topicStats.filter(s => s.total > 0 && s.correct === s.total).map(s => s.topic);
+  const otherTopics = topicStats.filter(s => !(s.total > 0 && s.correct === s.total)).map(s => s.topic);
+
+  return (
+    <div style={{
+      background: "#0D0D1A",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 20,
+      padding: "20px 24px",
+      width: 380,
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+    }}>
+      {/* Top */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: 12,
+          background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+        }}>🔥</div>
+        <div>
+          <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 18, fontWeight: 900, color: "white" }}>
+            {me.name} hit a x{bestStreak} streak
+          </div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+            in Flooq · {room.players.length} players
+          </div>
+        </div>
+      </div>
+
+      {/* Topic pills */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
+        {hotTopics.map(t => (
+          <span key={t} style={{
+            background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)",
+            borderRadius: 20, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#FBBF24",
+          }}>{t} 🔥</span>
+        ))}
+        {otherTopics.slice(0, 4).map(t => (
+          <span key={t} style={{
+            background: "rgba(255,255,255,0.05)",
+            borderRadius: 20, padding: "4px 10px", fontSize: 11, color: "rgba(255,255,255,0.45)",
+          }}>{t}</span>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.06)",
+      }}>
+        <div style={{ fontSize: 11, color: "rgba(168,85,247,0.55)", letterSpacing: 1 }}>
+          flooq.up.railway.app
+        </div>
+        <div style={{
+          background: "#7C3AED", borderRadius: 20, padding: "6px 16px",
+          fontSize: 12, fontWeight: 600, color: "white",
+        }}>
+          Beat my streak
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Share text generators ─────────────────────────────────────────────────────
+function passportShareText(me: Player, room: Room, topicStats: TopicStat[], bestStreak: number): string {
+  const rank = myRank(room, me);
+  const acc  = accuracy(topicStats);
+  const topics = topicStats.slice(0, 4).map(s => s.topic).join(", ");
+  const rankStr = rank === 1 ? "won" : `came #${rank}`;
+  return `I ${rankStr} a Flooq game with ${me.score} pts 🧠\n` +
+    `Topics: ${topics}\n` +
+    `Best streak: x${bestStreak} · Accuracy: ${acc}%\n` +
+    `flooq.up.railway.app`;
+}
+
+function streakShareText(me: Player, bestStreak: number, topicStats: TopicStat[]): string {
+  const hotTopics = topicStats.filter(s => s.total > 0 && s.correct === s.total).map(s => s.topic);
+  const topicsStr = hotTopics.length > 0 ? hotTopics.join(", ") : topicStats.slice(0, 3).map(s => s.topic).join(", ");
+  return `I hit a x${bestStreak} streak on Flooq! 🔥\n` +
+    `Dominated: ${topicsStr}\n` +
+    `Can you beat it? flooq.up.railway.app`;
+}
+
+// ── Main ShareCard modal ──────────────────────────────────────────────────────
+export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
+  const [open, setOpen]       = useState(false);
+  const [tab, setTab]         = useState<"passport" | "streak">("passport");
+  const [copied, setCopied]   = useState(false);
+
+  const hasStreak = bestStreak >= 3;
+  const hasTopics = topicStats.length > 0;
+
+  // Don't show share button if no meaningful data
+  if (!hasTopics && bestStreak === 0) return null;
+
+  const shareText = tab === "passport"
+    ? passportShareText(me, room, topicStats, bestStreak)
+    : streakShareText(me, bestStreak, topicStats);
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: shareText });
+        return;
+      } catch { /* fallthrough to copy */ }
+    }
+    await navigator.clipboard.writeText(shareText).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <>
+      {/* Trigger button */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 2.2 }}
+      >
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={() => setOpen(true)}
+          className="w-full flex items-center justify-center gap-2"
+        >
+          <Share2 className="w-4 h-4" />
+          Share your result
+        </Button>
+      </motion.div>
+
+      {/* Modal — rendered via portal so position:fixed works at document root */}
+      {createPortal(
+        <AnimatePresence>
+          {open && (
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 100,
+              background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)",
+              display: "flex", alignItems: "flex-end", justifyContent: "center",
+              padding: "0 16px 24px",
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
+            >
+            <motion.div
+              initial={{ opacity: 0, y: 60 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 60 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              style={{
+                background: "#0D0D1A",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 24,
+                padding: 20,
+                width: "100%",
+                maxWidth: 420,
+              }}
+            >
+              {/* Modal header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <span style={{ fontFamily: "'Outfit', sans-serif", fontSize: 16, fontWeight: 700, color: "white" }}>
+                  Share your result
+                </span>
+                <button
+                  onClick={() => setOpen(false)}
+                  style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 8, padding: 6, cursor: "pointer", color: "rgba(255,255,255,0.5)", display: "flex" }}
+                >
+                  <X style={{ width: 16, height: 16 }} />
+                </button>
+              </div>
+
+              {/* Tab switcher */}
+              {hasStreak && (
+                <div style={{
+                  display: "flex", gap: 6, marginBottom: 16,
+                  background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 4,
+                }}>
+                  {(["passport", "streak"] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setTab(t)}
+                      style={{
+                        flex: 1, padding: "8px 0", border: "none", cursor: "pointer",
+                        borderRadius: 10, fontSize: 12, fontWeight: 600,
+                        background: tab === t ? "#7C3AED" : "transparent",
+                        color: tab === t ? "white" : "rgba(255,255,255,0.4)",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {t === "passport" ? "📋 Game Recap" : "🔥 Streak Brag"}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Card preview */}
+              <div style={{ overflow: "auto", marginBottom: 16, borderRadius: 16 }}>
+                {tab === "passport"
+                  ? <PassportCard me={me} room={room} topicStats={topicStats} bestStreak={bestStreak} />
+                  : <StreakCard   me={me} room={room} topicStats={topicStats} bestStreak={bestStreak} />
+                }
+              </div>
+
+              {/* Share text preview */}
+              <div style={{
+                background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: 12,
+                marginBottom: 14, fontSize: 12, color: "rgba(255,255,255,0.5)",
+                lineHeight: 1.6, whiteSpace: "pre-line",
+              }}>
+                {shareText}
+              </div>
+
+              {/* Share button */}
+              <button
+                onClick={handleShare}
+                style={{
+                  width: "100%", padding: "14px 0", border: "none", cursor: "pointer",
+                  background: copied ? "#059669" : "linear-gradient(135deg, #7C3AED, #2563EB)",
+                  borderRadius: 14, fontFamily: "'Outfit', sans-serif",
+                  fontSize: 15, fontWeight: 700, color: "white",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  transition: "all 0.2s",
+                }}
+              >
+                {copied
+                  ? <><Check style={{ width: 18, height: 18 }} /> Copied!</>
+                  : <><Share2 style={{ width: 18, height: 18 }} /> {navigator.share ? "Share" : "Copy to clipboard"}</>
+                }
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>,
+      document.body
+    )}
+    </>
+  );
+}
