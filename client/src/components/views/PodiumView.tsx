@@ -7,12 +7,16 @@ import { useAudioSystem } from "@/hooks/use-audio";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Confetti } from "../Confetti";
+import { ShareCard } from "../ShareCard";
+import { type TopicStat } from "@/hooks/use-socket";
 
 interface Props {
   room: Room;
   me: Player;
   onPlayAgain: () => void;
   onLeave: () => void;
+  topicStats: TopicStat[];
+  bestStreak: number;
 }
 
 const MEDAL = [
@@ -69,7 +73,7 @@ function PodiumSlot({ player, rank, me }: { player: Player; rank: number; me: Pl
   );
 }
 
-export function PodiumView({ room, me, onPlayAgain, onLeave }: Props) {
+export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStreak }: Props) {
   const [, setLocation] = useLocation();
   const { playSound } = useAudioSystem();
   const soundPlayedRef = useRef(false);
@@ -192,6 +196,9 @@ export function PodiumView({ room, me, onPlayAgain, onLeave }: Props) {
           ))}
         </div>
       </motion.div>
+
+      {/* Share result */}
+      <ShareCard me={me} room={room} topicStats={topicStats} bestStreak={bestStreak} />
 
       {/* Action buttons */}
       <motion.div

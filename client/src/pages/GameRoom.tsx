@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useParams } from "wouter";
 import { useSocket } from "@/hooks/use-socket";
 import { ParticleBackground } from "@/components/ParticleBackground";
@@ -15,15 +16,16 @@ import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, Share2 } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
+import { FlooqLogo } from "@/components/FlooqLogo";
 
 // Fix #2 — localStorage fallback with 2-hour TTL so identity survives tab closes
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000;
 function saveIdentity(name: string, avatarId: string) {
   const payload = JSON.stringify({ name, avatarId, expiresAt: Date.now() + IDENTITY_TTL_MS });
-  try { localStorage.setItem('lockdin_identity', payload); } catch {}
+  try { localStorage.setItem('flooq_identity', payload); } catch {}
   sessionStorage.setItem('playerName', name);
   sessionStorage.setItem('avatarId', avatarId);
 }
@@ -33,10 +35,10 @@ function loadIdentity(): { name: string; avatarId: string } | null {
   if (ssName) return { name: ssName, avatarId: sessionStorage.getItem('avatarId') ?? 'ghost' };
   // localStorage fallback (different tab / after tab close)
   try {
-    const raw = localStorage.getItem('lockdin_identity');
+    const raw = localStorage.getItem('flooq_identity');
     if (!raw) return null;
     const { name, avatarId, expiresAt } = JSON.parse(raw);
-    if (Date.now() > expiresAt) { localStorage.removeItem('lockdin_identity'); return null; }
+    if (Date.now() > expiresAt) { localStorage.removeItem('flooq_identity'); return null; }
     // Restore to sessionStorage for this tab
     sessionStorage.setItem('playerName', name);
     sessionStorage.setItem('avatarId', avatarId);
@@ -46,7 +48,7 @@ function loadIdentity(): { name: string; avatarId: string } | null {
 function clearIdentity() {
   sessionStorage.removeItem('playerName');
   sessionStorage.removeItem('avatarId');
-  try { localStorage.removeItem('lockdin_identity'); } catch {}
+  try { localStorage.removeItem('flooq_identity'); } catch {}
 }
 
 // ── Nickname modal shown when arriving via a shared link ──────────────────────
@@ -86,10 +88,8 @@ function NicknameModal({ roomCode, onJoin }: { roomCode: string; onJoin: (name: 
         transition={{ type: 'spring', stiffness: 280, damping: 24 }}
         className="relative z-10 glass-panel p-6 rounded-3xl w-full max-w-sm text-center"
       >
-        <div className="font-display font-black text-3xl text-white mb-1 inline-flex items-center">
-          <span>LOCK</span>
-          <span className="text-primary mx-0.5" style={{ display: 'inline-block', transform: 'rotate(15deg) skewX(-8deg)' }}>D</span>
-          <span className="bg-primary text-white px-2 py-0.5 rounded-lg">IN</span>
+        <div className="mb-1 flex justify-center">
+          <FlooqLogo size="md" />
         </div>
         <p className="text-white/50 text-sm mb-1">You've been invited to room</p>
         <div className="text-2xl font-display font-black text-primary tracking-widest mb-4">{roomCode}</div>
@@ -131,6 +131,12 @@ export default function GameRoom() {
   const [pendingAvatar, setPendingAvatar] = useState<string>('ghost');
   const prevStatusRef = useRef<string | null>(null);
   const prevRoundRef = useRef<number | null>(null); // null = not yet seeded
+  // Captures the selector name at the moment results appear (end of a round),
+  // so the RoundTransition overlay shows who picked the topic that was just played —
+  // not the NEW round's selector which gets assigned moments later.
+  const lastSelectorNameRef = useRef<string>('');
+  // Prevents the join effect from firing again after a "room not found" error.
+  const hasJoinedRef = useRef(false);
 
   const handleSplashDone = useCallback(() => setShowSplash(false), []);
   const handleTransitionDone = useCallback(() => setShowTransition(false), []);
@@ -139,7 +145,7 @@ export default function GameRoom() {
 
   const {
     room, me, isConnected, isReconnecting, connectTimeout, error, topicRejection, topicSuggestions, loadingSuggestions,
-    serverRestarted, roomExpired, wasKicked, kickMessage,
+    serverRestarted, roomExpired, wasKicked, kickMessage, topicStats, bestStreak,
     joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings,
     updateAvatar, resetGame, playAgain, clearError, clearTopicRejection, requestTopicSuggestions,
     clearServerRestarted, clearRoomExpired, clearWasKicked, kickPlayer,
@@ -149,17 +155,19 @@ export default function GameRoom() {
     if (!room || room.status === 'lobby' || room.status === 'ended') {
       leaveRoom();
       clearIdentity();
+      clearRoomExpired();
       setLocation('/');
     } else {
       setShowExitConfirm(true);
     }
-  }, [room, leaveRoom, setLocation]);
+  }, [room, leaveRoom, clearRoomExpired, setLocation]);
 
   const handleConfirmExit = useCallback(() => {
     leaveRoom();
     clearIdentity();
+    clearRoomExpired();
     setLocation('/');
-  }, [leaveRoom, setLocation]);
+  }, [leaveRoom, clearRoomExpired, setLocation]);
 
   const handleClearError = useCallback(() => clearError(), [clearError]);
 
@@ -172,7 +180,8 @@ export default function GameRoom() {
     const playerName = pendingName ?? identity?.name;
     const avatarId   = pendingAvatar !== 'ghost' ? pendingAvatar : (identity?.avatarId ?? 'ghost');
     if (!playerName) return;
-    if (isConnected && !room) {
+    if (isConnected && !room && !hasJoinedRef.current) {
+      hasJoinedRef.current = true;
       setShowSplash(true);
       joinRoom(playerName, code === 'new' ? undefined : code, avatarId);
     }
@@ -184,6 +193,23 @@ export default function GameRoom() {
       setLocation(`/room/${room.code}`, { replace: true });
     }
   }, [room?.code, code, setLocation]);
+
+  // Capture the topic selector name for the RoundTransition overlay.
+  // We capture it when the transition fires (status becomes topic_selection for
+  // a new round) — at that moment topicSelectorId is the player who will pick
+  // the topic for THIS round, which is exactly what we want to display.
+  const prevStatusForSelectorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!room) return;
+    const prev = prevStatusForSelectorRef.current;
+    prevStatusForSelectorRef.current = room.status;
+
+    // Capture at topic_selection start (when the transition overlay fires)
+    if (room.status === 'topic_selection' && prev !== 'topic_selection' && room.topicSelectorId) {
+      const name = room.players.find(p => p.id === room.topicSelectorId)?.name ?? '';
+      if (name) lastSelectorNameRef.current = name;
+    }
+  }, [room?.status, room?.topicSelectorId]);
 
   // Show round transition when a new round starts.
   // prevRoundRef starts as null so the very first gameState snapshot (including
@@ -209,29 +235,53 @@ export default function GameRoom() {
     return (
       <NicknameModal
         roomCode={code ?? ''}
-        onJoin={(name, avatar) => { setPendingName(name); setPendingAvatar(avatar); }}
+        onJoin={(name, avatar) => {
+          hasJoinedRef.current = false; // allow the join effect to fire for this new identity
+          setPendingName(name);
+          setPendingAvatar(avatar);
+        }}
       />
     );
   }
 
-  const selectorName = room?.players.find(p => p.id === room.topicSelectorId)?.name ?? '';
-
-  // Kicked by host — show a dedicated screen instead of the join modal
+  // Kicked by host — show as a portal overlay so GameRoom stays mounted
+  // (keeps URL at /room/XXXX during display), then replaces URL on dismiss
+  // so the player can't refresh back into the room.
   if (wasKicked) {
-    return (
-      <div className="flex items-center justify-center p-4" style={{ minHeight: '100dvh' }}>
-        <ParticleBackground />
-        <div className="relative z-10 glass-panel p-8 rounded-3xl text-center max-w-md w-full">
-          <div className="text-4xl mb-3">🚫</div>
-          <h2 className="text-2xl font-bold text-white mb-3">You were removed</h2>
+    return createPortal(
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}
+      >
+        <motion.div
+          initial={{ scale: 0.85, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+          className="glass-panel p-8 rounded-3xl text-center max-w-md w-full"
+        >
+          <div className="text-5xl mb-4">🚫</div>
+          <h2 className="text-2xl font-display font-bold text-white mb-3">You were removed</h2>
           <p className="text-white/60 mb-6">
             {kickMessage || 'The host removed you from the game.'}
           </p>
-          <Button onClick={() => { clearWasKicked(); setLocation('/'); }} className="w-full">
+          <Button
+            className="w-full"
+            onClick={() => {
+              clearWasKicked();
+              // Replace URL NOW — after the player has seen the screen —
+              // so they can't refresh to rejoin. Then navigate home.
+              window.history.replaceState(null, '', '/');
+              setLocation('/');
+            }}
+          >
             Back to Home
           </Button>
-        </div>
-      </div>
+        </motion.div>
+      </div>,
+      document.body
     );
   }
 
@@ -302,7 +352,7 @@ export default function GameRoom() {
       case 'results':
         return <ResultsView key={`results-${room.currentRound}`} room={room} me={me} />;
       case 'ended':
-        return <PodiumView key="ended" room={room} me={me} onPlayAgain={playAgain} onLeave={handleConfirmExit} />;
+        return <PodiumView key="ended" room={room} me={me} onPlayAgain={playAgain} onLeave={handleConfirmExit} topicStats={topicStats} bestStreak={bestStreak} />;
       default:
         return <div key="default" className="text-white">Unknown state</div>;
     }
@@ -398,7 +448,7 @@ export default function GameRoom() {
         visible={showTransition}
         round={room.currentRound}
         totalRounds={room.mode === 'round' ? room.target : undefined}
-        selectorName={selectorName}
+        selectorName={lastSelectorNameRef.current}
         onDone={handleTransitionDone}
       />
 
@@ -407,13 +457,23 @@ export default function GameRoom() {
 
       {/* Top Bar */}
       <header className="sticky top-0 z-40 flex items-center justify-between px-3 py-2 md:px-6 md:py-3 bg-black/50 backdrop-blur-md border-b border-white/5 shrink-0 min-w-0 overflow-hidden">
-        {/* Left: logo + leave */}
+        {/* Left: logo + share + leave */}
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className="font-display font-black text-base md:text-2xl tracking-tighter text-white/90 inline-flex items-center">
-            <span>LOCK</span>
-            <span className="text-primary mx-0.5" style={{ display: 'inline-block', transform: 'rotate(15deg) skewX(-8deg)' }}>D</span>
-            <span className="bg-primary text-white px-1 md:px-2 py-0.5 rounded-lg text-sm md:text-xl">IN</span>
-          </div>
+          <FlooqLogo size="sm" />
+          {room && (
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/room/${room.code}`;
+                if (navigator.share) { navigator.share({ title: 'Join my Flooq room!', url }).catch(() => {}); }
+                else { navigator.clipboard?.writeText(url).catch(() => {}); }
+              }}
+              title="Share room link"
+              className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-white/30 hover:text-primary hover:bg-primary/10 transition-colors text-xs font-medium"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline text-xs font-mono text-white/40">{room.code}</span>
+            </button>
+          )}
           <button
             onClick={handleExit}
             title="Leave room"

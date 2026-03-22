@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /$
+Disallow: /room/
+Disallow: /room/*
+
+Sitemap: https://flooq.up.railway.app/sitemap.xml

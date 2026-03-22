@@ -21,12 +21,13 @@ interface Props {
   onRequestSuggestions: () => void;
 }
 
-// Simple broad topics — used as instant fallback before AI suggestions load. All single words.
+// Simple broad topics — used as instant fallback before AI suggestions load.
+// Keep in sync with TOPIC_DATASET in server/ai.ts.
 const FALLBACK_TOPICS = [
-  "Vikings","Chess","Sharks","Volcanoes","Ramen",
-  "Anime","Pirates","Astronomy","Jazz","Mythology",
-  "Robots","Dinosaurs","Sushi","Esports","Cryptography",
-  "Pandas","Reggae","Glaciers","Samurai","Bioluminescence",
+  "Vikings", "Chess", "Sharks", "Volcanoes", "Ramen",
+  "Pirates", "Jazz", "Greek Mythology", "Robotics", "Dinosaurs",
+  "Reggae", "Samurai", "Sushi", "Cryptography", "Penguins",
+  "Dragons", "Formula 1", "Black Holes", "Chocolate", "Archaeology",
 ];
 
 export function TopicSelectionView({ room, me, onSelectTopic, error, onClearError, topicRejection, topicSuggestions, loadingSuggestions, onRequestSuggestions }: Props) {

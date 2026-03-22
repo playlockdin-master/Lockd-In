@@ -6,8 +6,8 @@ function ts() { return new Date().toISOString(); }
 function log(msg: string)   { console.log( `[INFO]  ${ts()} [game] ${msg}`); }
 function warn(msg: string)  { console.warn( `[WARN]  ${ts()} [game] ${msg}`); }
 function err(msg: string)   { console.error(`[ERROR] ${ts()} [game] ${msg}`); }
-import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX } from "@shared/schema";
-import { generateQuestion, generateTopicSuggestions, suggestSimilarTopic, TOPIC_DATASET, clearRoomCache } from "./ai";
+import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX, type RegionMode, type RegionId, REGIONS } from "@shared/schema";
+import { generateQuestion, generateTopicSuggestions, suggestSimilarTopic, TOPIC_DATASET, clearRoomCache, buildRegionContext } from "./ai";
 
 // ── Per-socket rate limiter ──────────────────────────────────────────────────
 // Tracks event counts per socket within a rolling 10-second window.
@@ -74,6 +74,7 @@ function isUnusableTopic(topic: string): boolean {
 // Fix #14 — known valid avatar IDs (must stay in sync with client/src/components/Avatar.tsx)
 const VALID_AVATAR_IDS = new Set([
   'ghost','gremlin','blob','egg','demon','brain','astro','duck','skull','shroom','robo','cat',
+  'witch','cloud','fox','zombie','dragon','bear',
 ]);
 
 const MAX_ROOMS = 500; // prevent runaway room creation
@@ -244,6 +245,7 @@ export function setupGameSockets(io: Server) {
           usedTopics: [],
           askedQuestions: [],
           answers: {},
+          regionMode: "global",
         };
         rooms.set(code, room);
         playerJoinOrder.set(code, []);
@@ -262,10 +264,17 @@ export function setupGameSockets(io: Server) {
       const ghostRaw = ghostPlayers.get(ghostKey_);
       const ghost = (ghostRaw && Date.now() <= ghostRaw.expiresAt) ? ghostRaw : null;
 
-      const nameAlreadyActive = room.players.some(
+      const existingActivePlayer = room.players.find(
         p => p.name.toLowerCase() === cleanName.toLowerCase()
       );
-      if (nameAlreadyActive && !ghost) {
+      const nameAlreadyActive = !!existingActivePlayer;
+      // Allow reconnect if the existing player is still in the room but marked
+      // isReconnecting (grace period). This covers the lobby-refresh race: the old
+      // socket disconnects, the grace period starts (player stays in room.players with
+      // isReconnecting=true, no ghost saved yet), and the new socket arrives before
+      // the grace timer fires. Without this check they'd hit "nickname already taken".
+      const isReconnectingInPlace = !!existingActivePlayer?.isReconnecting;
+      if (nameAlreadyActive && !ghost && !isReconnectingInPlace) {
         socket.leave(code); // ── FIX: leave channel before rejecting
         socket.emit('error', { message: 'That nickname is already taken in this room.' });
         return;
@@ -279,16 +288,18 @@ export function setupGameSockets(io: Server) {
       }
 
       // ── FIX: Build player object before consuming ghost ───────────────────
-      const isHost = ghost ? ghost.isHost : room.players.length === 0;
+      const isHost = ghost
+        ? ghost.isHost
+        : isReconnectingInPlace
+          ? !!existingActivePlayer?.isHost
+          : room.players.length === 0;
       const player: Player = {
         id: socket.id,
         name: cleanName,
-        avatarId: cleanAvatar || (ghost ? ghost.avatarId : 'ghost'),
-        score: ghost ? ghost.score : 0,
-        streak: ghost ? ghost.streak : 0,
-        // New players always start unready; ghosts restore their prior state
-        // (mid-game status != lobby → they were effectively ready)
-        isReady: ghost ? (room.status !== 'lobby') : false,
+        avatarId: cleanAvatar || (ghost ? ghost.avatarId : existingActivePlayer?.avatarId ?? 'ghost'),
+        score: ghost ? ghost.score : existingActivePlayer?.score ?? 0,
+        streak: ghost ? ghost.streak : existingActivePlayer?.streak ?? 0,
+        isReady: ghost ? (room.status !== 'lobby') : isReconnectingInPlace ? (existingActivePlayer?.isReady ?? false) : false,
         isHost,
       };
 
@@ -297,33 +308,48 @@ export function setupGameSockets(io: Server) {
         room.players.forEach(p => { p.isHost = false; });
       }
 
-      // Safely add player — consume ghost only after this point
-      room.players.push(player);
-      if (ghost) ghostPlayers.delete(ghostKey_); // consume now that player is in room
-
-      // ── FIX: Register O(1) socket→room mapping ────────────────────────────
-      socketRoomMap.set(socket.id, code);
-
-      // ── FIX: Ghost rejoin — replace OLD socket.id with NEW in joinOrder ───
-      // Previously the code only appended the new id, leaving the dead old id in
-      // the list and corrupting the selector rotation (double slot for one player).
       const joinOrder = playerJoinOrder.get(code)!;
-      if (ghost) {
-        // Find and replace the old socket id in joinOrder
-        const oldIdx = joinOrder.findIndex(id => {
-          // The old id is no longer in room.players (we just pushed the new player),
-          // so we find the slot that is NOT a current active player id.
-          // Since we just pushed the new player, filter out the new socket.id too.
-          return id !== socket.id && !room.players.some(p => p.id === id);
-        });
-        if (oldIdx !== -1) {
-          joinOrder[oldIdx] = socket.id;
+
+      if (isReconnectingInPlace && existingActivePlayer) {
+        // ── FIX: Replace stale entry in-place — don't push a duplicate ───────
+        // The old socket is still in room.players with isReconnecting=true.
+        // Pushing a second entry would give the player two slots in joinOrder,
+        // break the host transfer logic, and leave a ghost entry that handleDisconnect
+        // would try (and fail) to clean up later.
+        const oldSocketId = existingActivePlayer.id;
+        const oldIdx = room.players.indexOf(existingActivePlayer);
+        room.players[oldIdx] = player;
+
+        socketRoomMap.delete(oldSocketId);
+        socketRoomMap.set(socket.id, code);
+
+        const orderIdx = joinOrder.indexOf(oldSocketId);
+        if (orderIdx !== -1) {
+          joinOrder[orderIdx] = socket.id;
         } else if (!joinOrder.includes(socket.id)) {
           joinOrder.push(socket.id);
         }
       } else {
-        if (!joinOrder.includes(socket.id)) {
-          joinOrder.push(socket.id);
+        // Normal path: new player or ghost restore
+        room.players.push(player);
+        if (ghost) ghostPlayers.delete(ghostKey_);
+
+        socketRoomMap.set(socket.id, code);
+
+        if (ghost) {
+          // Replace old socket.id in joinOrder — ghost's old id is no longer in room.players
+          const oldIdx = joinOrder.findIndex(id => {
+            return id !== socket.id && !room.players.some(p => p.id === id);
+          });
+          if (oldIdx !== -1) {
+            joinOrder[oldIdx] = socket.id;
+          } else if (!joinOrder.includes(socket.id)) {
+            joinOrder.push(socket.id);
+          }
+        } else {
+          if (!joinOrder.includes(socket.id)) {
+            joinOrder.push(socket.id);
+          }
         }
       }
 
@@ -402,7 +428,7 @@ export function setupGameSockets(io: Server) {
       }
     });
 
-    socket.on("updateSettings", ({ mode, target, topicTimeSecs, questionTimeSecs }) => {
+    socket.on("updateSettings", ({ mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode }) => {
       if (isRateLimited(socket.id, 'updateSettings')) return;
       const room = getRoomBySocketId(socket.id);
       if (!room || room.status !== "lobby") return;
@@ -423,10 +449,31 @@ export function setupGameSockets(io: Server) {
       if (typeof questionTimeSecs === 'number' && questionTimeSecs >= QUESTION_TIME_MIN && questionTimeSecs <= QUESTION_TIME_MAX) {
         room.questionTimeSecs = questionTimeSecs;
       }
+      // Region settings — validate before storing
+      const validRegionModes: RegionMode[] = ['global', 'regional'];
+      if (regionMode && validRegionModes.includes(regionMode)) {
+        room.regionMode = regionMode;
+        if (regionMode === 'regional') {
+          const validRegionIds = REGIONS.map(r => r.id);
+          if (regionId && validRegionIds.includes(regionId)) {
+            room.regionId = regionId;
+            const region = REGIONS.find(r => r.id === regionId);
+            const validCountryCodes = region?.countries.map(c => c.code) ?? [];
+            room.countryCode = (countryCode && validCountryCodes.includes(countryCode)) ? countryCode : undefined;
+          } else {
+            room.regionId   = undefined;
+            room.countryCode = undefined;
+          }
+        } else {
+          // global — clear any previous region selection
+          room.regionId    = undefined;
+          room.countryCode = undefined;
+        }
+      }
       io.to(room.code).emit("gameState", serializeRoom(room));
     });
 
-    socket.on("startGame", ({ mode, target, topicTimeSecs, questionTimeSecs }) => {
+    socket.on("startGame", ({ mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode }) => {
       if (isRateLimited(socket.id, 'startGame')) return;
       const room = getRoomBySocketId(socket.id);
       if (!room) return;
@@ -447,6 +494,23 @@ export function setupGameSockets(io: Server) {
       if (typeof questionTimeSecs === 'number' && questionTimeSecs >= QUESTION_TIME_MIN && questionTimeSecs <= QUESTION_TIME_MAX) {
         room.questionTimeSecs = questionTimeSecs;
       }
+      // Apply region settings on start (mirrors updateSettings validation)
+      const validRegionModes: RegionMode[] = ['global', 'regional'];
+      if (regionMode && validRegionModes.includes(regionMode)) {
+        room.regionMode = regionMode;
+        if (regionMode === 'regional') {
+          const validRegionIds = REGIONS.map(r => r.id);
+          if (regionId && validRegionIds.includes(regionId)) {
+            room.regionId = regionId;
+            const region = REGIONS.find(r => r.id === regionId);
+            const validCountryCodes = region?.countries.map(c => c.code) ?? [];
+            room.countryCode = (countryCode && validCountryCodes.includes(countryCode)) ? countryCode : undefined;
+          }
+        } else {
+          room.regionId    = undefined;
+          room.countryCode = undefined;
+        }
+      }
       room.currentRound = 0;
       room.players.forEach((p) => {
         p.score = 0;
@@ -462,8 +526,7 @@ export function setupGameSockets(io: Server) {
       if (socket.id !== room.topicSelectorId) return;
 
       try {
-        const used = room.usedTopics.slice(-15);
-        const suggestions = await generateTopicSuggestions(used);
+        const suggestions = await generateTopicSuggestions([]);
         socket.emit("topicSuggestions", { suggestions });
       } catch (err) {
         console.error("Failed to generate topic suggestions:", err);
@@ -540,7 +603,7 @@ export function setupGameSockets(io: Server) {
 
       // Auto-transition to lobby when ALL players have voted play again
       const allVoted = room.players.every(p => room.playAgainIds!.includes(p.id));
-      if (allVoted && room.players.length >= 2) {
+      if (allVoted && room.players.length >= 1) {
         resetRoomToLobby(room, io);
       }
     });
@@ -554,9 +617,11 @@ export function setupGameSockets(io: Server) {
       if (room.status !== 'ended') return;
 
       // Reset all game state, keep players in the room
+      clearRoomCache(room.code, room.usedTopics);
       room.status = 'lobby';
       room.currentRound = 0;
       room.usedTopics = [];
+      room.askedQuestions = [];
       room.answers = {};
       delete room.currentQuestion;
       delete room.currentTopic;
@@ -639,9 +704,48 @@ export function setupGameSockets(io: Server) {
       const room = roomCode ? rooms.get(roomCode) : null;
       const player = room ? room.players.find(p => p.id === socket.id) : null;
 
-      if (player && room && room.status !== 'lobby' && room.status !== 'ended') {
-        // Mark as reconnecting — client shows a "reconnecting" indicator
+      if (player && room && room.status !== 'ended') {
+        // Mark as reconnecting — client shows a "reconnecting" indicator.
+        // Grace period applies in lobby too: a browser refresh disconnects and
+        // reconnects within milliseconds. Without the grace, the old socket's
+        // disconnect removes the player from room.players, but the new socket's
+        // joinRoom may arrive before or just after that removal — if the player
+        // is still present (race) they hit "nickname already taken"; if they were
+        // removed, their lobby slot (host status, ready state, etc.) is lost.
         player.isReconnecting = true;
+
+        // During the question phase, immediately remove this player from the eligible
+        // answer pool. If we leave them in roundPlayerIds with no answer entry, the
+        // "all answered" check can never pass and the round hangs for the full 10s grace.
+        if (room.status === 'question') {
+          if (room.roundPlayerIds) {
+            room.roundPlayerIds = room.roundPlayerIds.filter(id => id !== socket.id);
+          }
+          delete room.answers[socket.id];
+          // Check if all remaining eligible players have now answered
+          const eligibleIds = room.roundPlayerIds ?? room.players.filter(p => !p.isReconnecting).map(p => p.id);
+          const answeredEligible = eligibleIds.filter(id => room!.answers[id] !== undefined).length;
+          if (room.currentQuestion && eligibleIds.length > 0 && answeredEligible === eligibleIds.length) {
+            clearRoomTimer(roomCode!);
+            io.to(roomCode!).emit("gameState", serializeRoom(room));
+            proceedToResults(room, io);
+            // Start grace timer but round has already advanced — that's fine, rejoin will still work
+            const graceKey2 = `${roomCode}:${player.name.toLowerCase()}`;
+            const existing2 = reconnectTimers.get(graceKey2);
+            if (existing2) clearTimeout(existing2);
+            reconnectTimers.set(graceKey2, setTimeout(() => {
+              reconnectTimers.delete(graceKey2);
+              const liveRoom2 = roomCode ? rooms.get(roomCode) : null;
+              if (!liveRoom2) return;
+              const stillGhost2 = liveRoom2.players.find(
+                p => p.name.toLowerCase() === player.name.toLowerCase() && p.isReconnecting
+              );
+              if (stillGhost2) handleDisconnect(stillGhost2.id, io);
+            }, RECONNECT_GRACE_MS));
+            return;
+          }
+        }
+
         io.to(roomCode!).emit("gameState", serializeRoom(room));
 
         const graceKey = `${roomCode}:${player.name.toLowerCase()}`;
@@ -663,7 +767,7 @@ export function setupGameSockets(io: Server) {
           }
         }, RECONNECT_GRACE_MS));
       } else {
-        // In lobby or ended state — disconnect immediately, no grace needed
+        // ended rooms or player not found — disconnect immediately
         handleDisconnect(socket.id, io);
       }
     });
@@ -741,6 +845,9 @@ function serializeRoom(room: Room): object {
     fastestPlayerId: room.fastestPlayerId,
     playAgainIds: room.playAgainIds ? [...room.playAgainIds] : [],
     viewingResultsIds: room.viewingResultsIds ? [...room.viewingResultsIds] : [],
+    regionMode:   room.regionMode ?? "global",
+    regionId:     room.regionId,
+    countryCode:  room.countryCode,
   };
 }
 
@@ -950,11 +1057,7 @@ function startTopicSelection(room: Room, io: Server, incrementRound = true) {
   setRoomTimer(room.code, () => {
     const liveRoomAtFire = rooms.get(room.code);
     if (!liveRoomAtFire || liveRoomAtFire.status !== 'topic_selection') return;
-    // Use shared TOPIC_DATASET, filtering out recently used topics so we never repeat
-    const used = new Set(liveRoomAtFire.usedTopics.map((t: string) => t.toLowerCase()));
-    const available = TOPIC_DATASET.filter((t: string) => !used.has(t.toLowerCase()));
-    const pool = available.length > 0 ? available : TOPIC_DATASET;
-    const randomTopic = pool[Math.floor(Math.random() * pool.length)];
+    const randomTopic = TOPIC_DATASET[Math.floor(Math.random() * TOPIC_DATASET.length)];
     proceedToQuestion(liveRoomAtFire, io, randomTopic);
   }, topicTimeMs(room));
 }
@@ -973,18 +1076,18 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
   // currentTopic may already be set by selectTopic's pre-lock — only set if not
   if (!room.currentTopic) room.currentTopic = topic;
-  room.usedTopics.push(topic);
-  // Fix #7 — cap at 20 so array doesn't grow unboundedly in score mode
-  if (room.usedTopics.length > 20) room.usedTopics.shift();
   room.status = "question";
 
   // Snapshot the round number so we can detect stale responses after the await
   const roundSnapshot = room.currentRound;
+  // Snapshot region context now — used for the primary question call.
+  // The replacement-topic call (on NO_TRIVIA) re-reads from liveRoom below.
+  const regionCtxSnapshot = buildRegionContext(room.regionMode, room.regionId, room.countryCode);
 
   io.to(room.code).emit("gameState", serializeRoom(room));
 
   try {
-    const question = await generateQuestion(topic, room.usedTopics, room.code, undefined, difficultyOverride as any, room.askedQuestions ?? []);
+    const question = await generateQuestion(topic, [], room.code, undefined, difficultyOverride as any, room.askedQuestions ?? [], regionCtxSnapshot);
 
     // ── FIX: Full stale-room check after async gap ────────────────────────
     const liveRoom = rooms.get(room.code);
@@ -1036,15 +1139,11 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
       // Try to get a similar topic from the AI first
       let replacementTopic: string;
       try {
-        replacementTopic = await suggestSimilarTopic(topic, room.usedTopics);
+        replacementTopic = await suggestSimilarTopic(topic, []);
         log(`[similar-topic] "${topic}" → "${replacementTopic}"`);
       } catch {
-        // AI suggestion failed — fall back to random from dataset
-        const usedFallbacks = room.usedTopics;
-        const used = new Set(usedFallbacks.map((t: string) => t.toLowerCase()));
-        const available = TOPIC_DATASET.filter((t: string) => !used.has(t.toLowerCase()));
-        const pool = available.length > 0 ? available : TOPIC_DATASET;
-        replacementTopic = pool[Math.floor(Math.random() * pool.length)];
+        // AI suggestion failed — fall back to a random topic from the dataset
+        replacementTopic = TOPIC_DATASET[Math.floor(Math.random() * TOPIC_DATASET.length)];
         log(`[similar-topic] AI failed, using random: "${replacementTopic}"`);
       }
 
@@ -1057,7 +1156,6 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
       // Reset topic lock and proceed with the replacement
       room.currentTopic = replacementTopic;
-      room.usedTopics.push(replacementTopic);
 
       // Short pause so players can read the message, then generate
       await new Promise(res => setTimeout(res, 2500));
@@ -1069,7 +1167,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
       io.to(room.code).emit("gameState", serializeRoom(room));
 
       try {
-        const question = await generateQuestion(replacementTopic, room.usedTopics, room.code, undefined, undefined, room.askedQuestions ?? []);
+        const question = await generateQuestion(replacementTopic, [], room.code, undefined, undefined, room.askedQuestions ?? [], buildRegionContext(stillLive.regionMode, stillLive.regionId, stillLive.countryCode));
         const afterGen = rooms.get(room.code);
         if (!afterGen || afterGen.currentRound !== roundSnapshot) return;
 
@@ -1232,12 +1330,13 @@ function checkGameEndOrNextRound(room: Room, io: Server) {
       : 0;
     if (topScore >= room.target) {
       ended = true;
-      // Tiebreaker: if multiple players hit the target in the same round,
-      // the one who earned more points this round wins (i.e. answered faster/correct).
-      room.players.sort((a, b) => {
+      // Tiebreaker: sort a COPY for display — do NOT mutate room.players in-place
+      // as that corrupts join order and host assignment for the next game.
+      const sorted = [...room.players].sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return (b.lastPoints ?? 0) - (a.lastPoints ?? 0);
       });
+      room.players.splice(0, room.players.length, ...sorted);
     }
   }
 

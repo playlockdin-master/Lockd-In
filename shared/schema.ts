@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 // ── Shared profanity list — single source of truth for client + server ────────
 export const PROFANITY_SET = new Set([
   'fuck','shit','cunt','bitch','asshole','bastard','cock','dick','pussy',
@@ -23,11 +21,131 @@ export function validatePlayerNameShared(raw: unknown): string | null {
   return null;
 }
 
-export const insertPlayerSchema = z.object({
-  name: z.string().min(1).max(20),
-});
-
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
+
+// ── Region system ─────────────────────────────────────────────────────────────
+
+export type RegionMode = 'global' | 'regional';
+
+export type RegionId =
+  | 'south_asia'
+  | 'east_asia'
+  | 'americas'
+  | 'europe'
+  | 'mena_africa'
+  | 'oceania';
+
+export interface RegionDef {
+  id: RegionId;
+  label: string;
+  flag: string;         // representative emoji flag
+  description: string;
+  countries: CountryDef[];
+}
+
+export interface CountryDef {
+  code: string;         // ISO-ish short code
+  label: string;
+  flag: string;
+}
+
+export const REGIONS: RegionDef[] = [
+  {
+    id: 'south_asia',
+    label: 'South Asia',
+    flag: '🌏',
+    description: 'India, Pakistan, Sri Lanka, Bangladesh & more',
+    countries: [
+      { code: 'in', label: 'India',       flag: '🇮🇳' },
+      { code: 'pk', label: 'Pakistan',    flag: '🇵🇰' },
+      { code: 'lk', label: 'Sri Lanka',   flag: '🇱🇰' },
+      { code: 'bd', label: 'Bangladesh',  flag: '🇧🇩' },
+      { code: 'np', label: 'Nepal',       flag: '🇳🇵' },
+    ],
+  },
+  {
+    id: 'east_asia',
+    label: 'East Asia',
+    flag: '🌏',
+    description: 'Japan, Korea, China & Southeast Asia',
+    countries: [
+      { code: 'jp', label: 'Japan',         flag: '🇯🇵' },
+      { code: 'kr', label: 'South Korea',   flag: '🇰🇷' },
+      { code: 'cn', label: 'China',         flag: '🇨🇳' },
+      { code: 'sg', label: 'Singapore',     flag: '🇸🇬' },
+      { code: 'ph', label: 'Philippines',   flag: '🇵🇭' },
+      { code: 'id', label: 'Indonesia',     flag: '🇮🇩' },
+      { code: 'th', label: 'Thailand',      flag: '🇹🇭' },
+      { code: 'vn', label: 'Vietnam',       flag: '🇻🇳' },
+    ],
+  },
+  {
+    id: 'americas',
+    label: 'Americas',
+    flag: '🌎',
+    description: 'United States, Canada, Latin America',
+    countries: [
+      { code: 'us', label: 'United States', flag: '🇺🇸' },
+      { code: 'ca', label: 'Canada',        flag: '🇨🇦' },
+      { code: 'mx', label: 'Mexico',        flag: '🇲🇽' },
+      { code: 'br', label: 'Brazil',        flag: '🇧🇷' },
+      { code: 'ar', label: 'Argentina',     flag: '🇦🇷' },
+      { code: 'co', label: 'Colombia',      flag: '🇨🇴' },
+    ],
+  },
+  {
+    id: 'europe',
+    label: 'Europe',
+    flag: '🌍',
+    description: 'UK, EU, Nordics & Eastern Europe',
+    countries: [
+      { code: 'gb', label: 'United Kingdom', flag: '🇬🇧' },
+      { code: 'de', label: 'Germany',        flag: '🇩🇪' },
+      { code: 'fr', label: 'France',         flag: '🇫🇷' },
+      { code: 'es', label: 'Spain',          flag: '🇪🇸' },
+      { code: 'it', label: 'Italy',          flag: '🇮🇹' },
+      { code: 'nl', label: 'Netherlands',    flag: '🇳🇱' },
+      { code: 'se', label: 'Sweden',         flag: '🇸🇪' },
+      { code: 'pl', label: 'Poland',         flag: '🇵🇱' },
+    ],
+  },
+  {
+    id: 'mena_africa',
+    label: 'MENA & Africa',
+    flag: '🌍',
+    description: 'Middle East, North Africa & Sub-Saharan Africa',
+    countries: [
+      { code: 'sa', label: 'Saudi Arabia',  flag: '🇸🇦' },
+      { code: 'ae', label: 'UAE',           flag: '🇦🇪' },
+      { code: 'eg', label: 'Egypt',         flag: '🇪🇬' },
+      { code: 'ng', label: 'Nigeria',       flag: '🇳🇬' },
+      { code: 'za', label: 'South Africa',  flag: '🇿🇦' },
+      { code: 'ke', label: 'Kenya',         flag: '🇰🇪' },
+      { code: 'ma', label: 'Morocco',       flag: '🇲🇦' },
+    ],
+  },
+  {
+    id: 'oceania',
+    label: 'Oceania',
+    flag: '🌏',
+    description: 'Australia, New Zealand & Pacific Islands',
+    countries: [
+      { code: 'au', label: 'Australia',    flag: '🇦🇺' },
+      { code: 'nz', label: 'New Zealand',  flag: '🇳🇿' },
+      { code: 'fj', label: 'Fiji',         flag: '🇫🇯' },
+    ],
+  },
+];
+
+/** Lookup helper — returns region def or undefined */
+export function getRegion(id: RegionId): RegionDef | undefined {
+  return REGIONS.find(r => r.id === id);
+}
+
+/** Lookup helper — returns country def or undefined */
+export function getCountry(regionId: RegionId, countryCode: string): CountryDef | undefined {
+  return getRegion(regionId)?.countries.find(c => c.code === countryCode);
+}
 
 export interface Question {
   text: string;
@@ -86,4 +204,8 @@ export interface Room {
   playAgainIds?: string[]; // players who pressed Play Again during 'ended' state
   viewingResultsIds?: string[]; // players still on podium screen, haven't clicked play again
   askedQuestions?: string[]; // fingerprints of questions asked this game — used for deduplication
+  // Region system — controls cultural context injected into AI question generation
+  regionMode?: RegionMode;    // 'global' (no bias) | 'regional' (biased to region)
+  regionId?: RegionId;        // which region (only when regionMode === 'regional')
+  countryCode?: string;       // optional drill-down to a specific country within the region
 }

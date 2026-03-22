@@ -4,11 +4,10 @@ import { useAudioSystem } from "@/hooks/use-audio";
 
 interface TimerProps {
   deadline: number;
-  onExpire?: () => void;
   totalTime?: number;
 }
 
-export function Timer({ deadline, onExpire, totalTime = 15 }: TimerProps) {
+export function Timer({ deadline, totalTime = 18 }: TimerProps) {
   const [timeLeft, setTimeLeft] = useState(() => Math.max(0, Math.floor((deadline - Date.now()) / 1000)));
   const { playSound } = useAudioSystem();
   const lastTickedRef = useRef<number>(-1);
@@ -29,12 +28,11 @@ export function Timer({ deadline, onExpire, totalTime = 15 }: TimerProps) {
 
       if (remaining === 0) {
         clearInterval(interval);
-        onExpire?.();
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [deadline, onExpire, playSound]);
+  }, [deadline, playSound]);
 
   const progress = totalTime ? (timeLeft / totalTime) * 100 : 100;
   const isDanger = timeLeft <= 5;

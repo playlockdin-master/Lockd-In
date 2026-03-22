@@ -36,8 +36,8 @@ export default function Home() {
         setCodeError("Room code is required");
         return;
       }
-      if (!/^[A-Z0-9]{6}$/.test(trimmedCode)) {
-        setCodeError("Room code must be exactly 6 characters");
+      if (!/^[A-Z0-9]{4,8}$/.test(trimmedCode)) {
+        setCodeError("Room code must be 4–8 characters");
         return;
       }
     }
@@ -68,21 +68,52 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
-          <h1 className="text-5xl md:text-8xl font-display font-black tracking-tighter text-white mb-2 relative inline-flex items-center">
-            <span>LOCK</span>
-            <span
-              className="inline-block text-primary mx-0.5 md:mx-1 text-glow"
-              style={{ transform: 'rotate(15deg) skewX(-8deg)', transformOrigin: 'center' }}
-            >
-              D
-            </span>
-            <span className="inline-block bg-primary text-white px-3 md:px-4 py-0.5 md:py-1 rounded-xl md:rounded-2xl box-glow logo-shine">
-              IN
-            </span>
-          </h1>
-          <p className="text-base md:text-2xl text-white/60 font-medium tracking-wide mt-2 md:mt-4">
-            Clock in, Lock in.
-          </p>
+          {/* Flooq Logo — icon + wordmark */}
+          <div className="inline-flex items-center gap-4 md:gap-6">
+            {/* F icon with orbiting dot */}
+            <div className="relative flex-shrink-0" style={{ width: 64, height: 64 }}>
+              <svg viewBox="0 0 80 80" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="flooqArc" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#A855F7"/>
+                    <stop offset="100%" stopColor="#3B82F6"/>
+                  </linearGradient>
+                </defs>
+                {/* Purple circle bg */}
+                <circle cx="40" cy="40" r="38" fill="#5B21B6"/>
+                {/* Arc track */}
+                <circle cx="40" cy="40" r="30" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5"/>
+                {/* Arc fill — static 75%, no rotation animation on the arc itself */}
+                <circle cx="40" cy="40" r="30" fill="none" stroke="white" strokeWidth="2.5"
+                  strokeDasharray="141 47" strokeLinecap="round"
+                  transform="rotate(-90 40 40)"
+                />
+                {/* Orbiting dot — uses SVG animateTransform which is reliable */}
+                <circle cx="40" cy="10" r="4.5" fill="white">
+                  <animateTransform attributeName="transform" type="rotate"
+                    from="0 40 40" to="360 40 40" dur="6s" repeatCount="indefinite"/>
+                </circle>
+                {/* F mark — white */}
+                <rect x="29" y="23" width="4.5" height="34" rx="2" fill="white"/>
+                <rect x="29" y="23" width="22" height="4.5" rx="2" fill="white"/>
+                <rect x="29" y="37" width="16" height="4.5" rx="2" fill="white"/>
+              </svg>
+            </div>
+
+            {/* Wordmark */}
+            <div className="flex flex-col items-start gap-1">
+              <h1 className="font-display font-black tracking-tighter leading-none" style={{ fontSize: 'clamp(52px, 10vw, 88px)', letterSpacing: '-3px' }}>
+                <span className="text-white">f</span>
+                <span className="text-primary text-glow">l</span>
+                <span className="text-white">oo</span>
+                <span className="text-primary text-glow">q</span>
+              </h1>
+              <div className="h-0.5 w-full rounded-full" style={{ background: 'linear-gradient(90deg, #A855F7, #3B82F6)' }}/>
+              <p className="text-white/35 font-medium tracking-widest uppercase" style={{ fontSize: '10px', letterSpacing: '4px' }}>
+                Choose your topic
+              </p>
+            </div>
+          </div>
         </motion.div>
 
         <Card className="glass-panel-heavy max-w-md mx-auto w-full">
@@ -138,6 +169,28 @@ export default function Home() {
             </div>
           </div>
         </Card>
+
+        {/* How it works — 3 steps */}
+        <motion.div
+          className="max-w-md mx-auto w-full mt-6 md:mt-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
+        >
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { icon: "🎯", step: "1", title: "Pick a topic", desc: "Chess, Bollywood, Brawlhalla — anything" },
+              { icon: "⚡", step: "2", title: "AI generates", desc: "A question only real fans get right" },
+              { icon: "🏆", step: "3", title: "Race to answer", desc: "15 seconds. Speed + accuracy = points" },
+            ].map(({ icon, step, title, desc }) => (
+              <div key={step} className="glass-panel rounded-2xl p-3 text-center flex flex-col items-center gap-1.5">
+                <span className="text-2xl">{icon}</span>
+                <p className="text-white text-xs font-bold">{title}</p>
+                <p className="text-white/40 text-[10px] leading-snug">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
       </div>
     </div>
   );
