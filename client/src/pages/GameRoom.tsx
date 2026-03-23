@@ -16,12 +16,12 @@ import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
-import { User, LogOut, Share2 } from "lucide-react";
+import { User, LogOut, Share2, Zap, Ban, RefreshCw, Search, DoorOpen, Timer } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 import { FlooqLogo } from "@/components/FlooqLogo";
 
-// Fix #2 — localStorage fallback with 2-hour TTL so identity survives tab closes
+// localStorage fallback with 2-hour TTL so identity survives tab closes
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000;
 function saveIdentity(name: string, avatarId: string) {
   const payload = JSON.stringify({ name, avatarId, expiresAt: Date.now() + IDENTITY_TTL_MS });
@@ -146,7 +146,7 @@ export default function GameRoom() {
   const {
     room, me, isConnected, isReconnecting, connectTimeout, error, topicRejection, topicSuggestions, loadingSuggestions,
     serverRestarted, roomExpired, wasKicked, kickMessage, topicStats, bestStreak,
-    joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings,
+    joinRoom, leaveRoom, setReady, startGame, selectTopic, submitAnswer, sendReaction, updateSettings, submitPresetTopics, updateTopicMode,
     updateAvatar, resetGame, playAgain, clearError, clearTopicRejection, requestTopicSuggestions,
     clearServerRestarted, clearRoomExpired, clearWasKicked, kickPlayer,
   } = useSocket();
@@ -194,38 +194,36 @@ export default function GameRoom() {
     }
   }, [room?.code, code, setLocation]);
 
-  // Capture the topic selector name for the RoundTransition overlay.
-  // We capture it when the transition fires (status becomes topic_selection for
-  // a new round) — at that moment topicSelectorId is the player who will pick
-  // the topic for THIS round, which is exactly what we want to display.
+  // Track selector name while in topic_selection, then fire the transition
+  // overlay when status moves to 'question' (topic has just been confirmed).
+  const lastTopicRef = useRef<string>('');
   const prevStatusForSelectorRef = useRef<string | null>(null);
   useEffect(() => {
     if (!room) return;
     const prev = prevStatusForSelectorRef.current;
     prevStatusForSelectorRef.current = room.status;
 
-    // Capture at topic_selection start (when the transition overlay fires)
-    if (room.status === 'topic_selection' && prev !== 'topic_selection' && room.topicSelectorId) {
+    // Keep selector name fresh while picker is choosing
+    if (room.status === 'topic_selection' && room.topicSelectorId) {
       const name = room.players.find(p => p.id === room.topicSelectorId)?.name ?? '';
       if (name) lastSelectorNameRef.current = name;
     }
-  }, [room?.status, room?.topicSelectorId]);
 
-  // Show round transition when a new round starts.
-  // prevRoundRef starts as null so the very first gameState snapshot (including
-  // late-joiners who land mid-game) seeds the ref without triggering the overlay.
+    // Fire overlay the moment topic_selection → question (topic is now known)
+    if (room.status === 'question' && prev === 'topic_selection' && room.currentTopic) {
+      lastTopicRef.current = room.currentTopic;
+      setShowTransition(true);
+    }
+  }, [room?.status, room?.topicSelectorId, room?.currentTopic]);
+
+  // Seed prevRoundRef / prevStatusRef on every update (kept for future use,
+  // no longer drives the transition trigger).
   useEffect(() => {
     if (!room) return;
     if (prevRoundRef.current === null) {
-      // First snapshot — just seed, never animate
       prevStatusRef.current = room.status;
       prevRoundRef.current = room.currentRound;
       return;
-    }
-    const wasNotTopicSelection = prevStatusRef.current !== 'topic_selection';
-    const isNewRound = room.currentRound > prevRoundRef.current;
-    if (room.status === 'topic_selection' && wasNotTopicSelection && isNewRound && room.currentRound > 1) {
-      setShowTransition(true);
     }
     prevStatusRef.current = room.status;
     prevRoundRef.current = room.currentRound;
@@ -262,7 +260,7 @@ export default function GameRoom() {
           transition={{ type: 'spring', stiffness: 280, damping: 24 }}
           className="glass-panel p-8 rounded-3xl text-center max-w-md w-full"
         >
-          <div className="text-5xl mb-4">🚫</div>
+          <div className="text-5xl mb-4 flex justify-center"><Ban className="w-12 h-12 text-red-400" /></div>
           <h2 className="text-2xl font-display font-bold text-white mb-3">You were removed</h2>
           <p className="text-white/60 mb-6">
             {kickMessage || 'The host removed you from the game.'}
@@ -285,13 +283,13 @@ export default function GameRoom() {
     );
   }
 
-  // Fix #2: server restarted and wiped this room — friendlier than a generic error
+  // Server restarted and wiped this room — friendlier than a generic error
   if (serverRestarted) {
     return (
       <div className="flex items-center justify-center p-4" style={{ minHeight: '100dvh' }}>
         <ParticleBackground />
         <div className="relative z-10 glass-panel p-8 rounded-3xl text-center max-w-md w-full">
-          <div className="text-4xl mb-3">🔄</div>
+          <div className="text-4xl mb-3 flex justify-center"><RefreshCw className="w-10 h-10 text-yellow-400" /></div>
           <h2 className="text-2xl font-bold text-white mb-3">Server Restarted</h2>
           <p className="text-white/60 mb-6">
             The game server restarted and your session was lost.
@@ -310,7 +308,7 @@ export default function GameRoom() {
       <div className="flex items-center justify-center p-4" style={{ minHeight: '100dvh' }}>
         <ParticleBackground />
         <div className="relative z-10 glass-panel p-8 rounded-3xl text-center max-w-md w-full">
-          <div className="text-4xl mb-3">🔍</div>
+          <div className="text-4xl mb-3 flex justify-center"><Search className="w-10 h-10 text-white/40" /></div>
           <h2 className="text-2xl font-bold text-white mb-3">Can't Join Room</h2>
           <p className="text-white/60 mb-6">{error}</p>
           <Button onClick={() => setLocation('/')} className="w-full">Back to Home</Button>
@@ -344,11 +342,24 @@ export default function GameRoom() {
   const renderView = () => {
     switch (room.status) {
       case 'lobby':
-        return <LobbyView key="lobby" room={room} me={me} onReady={setReady} onStart={startGame} onUpdateSettings={updateSettings} onUpdateAvatar={updateAvatar} onKickPlayer={kickPlayer} />;
+        return <LobbyView key="lobby" room={room} me={me} onReady={setReady} onStart={startGame} onUpdateSettings={updateSettings} onUpdateAvatar={updateAvatar} onKickPlayer={kickPlayer} onUpdateTopicMode={updateTopicMode} onSubmitPresetTopics={submitPresetTopics} />;
       case 'topic_selection':
         return <TopicSelectionView key={`topic-${room.currentRound}`} room={room} me={me} onSelectTopic={selectTopic} error={error} onClearError={handleClearError} topicRejection={topicRejection} topicSuggestions={topicSuggestions} loadingSuggestions={loadingSuggestions} onRequestSuggestions={requestTopicSuggestions} />;
       case 'question':
         return <QuestionView key={`question-${room.currentRound}`} room={room} me={me} onSubmitAnswer={submitAnswer} topicRejection={topicRejection} />;
+      case 'generating':
+        return (
+          <div key="generating" className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center px-4">
+            <div className="relative w-20 h-20">
+              <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+              <div className="absolute inset-0 rounded-full border-4 border-t-primary animate-spin" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-white font-display font-bold text-2xl">Generating Questions</p>
+              <p className="text-white/40 text-sm">Preparing {room.target} questions from your topics...</p>
+            </div>
+          </div>
+        );
       case 'results':
         return <ResultsView key={`results-${room.currentRound}`} room={room} me={me} />;
       case 'ended':
@@ -362,7 +373,7 @@ export default function GameRoom() {
     <div className="relative flex flex-col overflow-x-hidden w-full" style={{ minHeight: '100dvh' }}>
       {showSplash && <RoomSplash onDone={handleSplashDone} />}
 
-      {/* Fix #5b — Reconnecting banner — shown when socket drops mid-game */}
+      {/* Reconnecting banner — shown when socket drops mid-game */}
       <AnimatePresence>
         {isReconnecting && room && (
           <motion.div
@@ -380,7 +391,7 @@ export default function GameRoom() {
         )}
       </AnimatePresence>
 
-      {/* Fix #5: Room expiry warning — shown 30s before server deletes the ended room */}
+      {/* Room expiry warning — shown 30s before server deletes the ended room */}
       <AnimatePresence>
         {roomExpired && (
           <motion.div
@@ -389,7 +400,7 @@ export default function GameRoom() {
             exit={{ opacity: 0, y: -20 }}
             className="fixed top-4 left-1/2 -translate-x-1/2 z-50 glass-panel px-5 py-3 rounded-2xl text-center max-w-sm w-full mx-4 border border-yellow-400/30"
           >
-            <p className="text-yellow-300 font-semibold text-sm">⏳ Room session ending soon</p>
+            <p className="text-yellow-300 font-semibold text-sm flex items-center justify-center gap-1.5"><Timer className="w-3.5 h-3.5" />Room session ending soon</p>
             <p className="text-white/60 text-xs mt-0.5">Start a new game to keep playing</p>
             <div className="flex gap-2 mt-3">
               <Button
@@ -428,7 +439,7 @@ export default function GameRoom() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="glass-panel p-6 rounded-3xl text-center max-w-sm w-full"
             >
-              <div className="text-4xl mb-3">🚪</div>
+              <div className="text-4xl mb-3 flex justify-center"><DoorOpen className="w-10 h-10 text-white/50" /></div>
               <h2 className="text-xl font-display font-bold text-white mb-2">Leave the game?</h2>
               <p className="text-white/50 text-sm mb-6">The game is in progress. Your progress won't be saved.</p>
               <div className="flex gap-3">
@@ -449,6 +460,7 @@ export default function GameRoom() {
         round={room.currentRound}
         totalRounds={room.mode === 'round' ? room.target : undefined}
         selectorName={lastSelectorNameRef.current}
+        topic={lastTopicRef.current}
         onDone={handleTransitionDone}
       />
 
@@ -494,8 +506,8 @@ export default function GameRoom() {
                 const pct = Math.min(100, Math.round((leaderScore / room.target) * 100));
                 const nearWin = pct >= 80;
                 return (
-                  <span className={nearWin ? 'text-yellow-300' : ''}>
-                    {nearWin ? '⚡' : ''}{leaderScore}/{room.target}
+                  <span className={nearWin ? 'text-yellow-300 flex items-center gap-0.5' : ''}>
+                    {nearWin && <Zap className="w-3 h-3 fill-current inline" />}{leaderScore}/{room.target}
                   </span>
                 );
               })()
@@ -506,13 +518,56 @@ export default function GameRoom() {
         <div className="flex items-center gap-1 shrink-0">
           {(room.status === 'question' || room.status === 'results') && (
             <div className="flex bg-black/40 rounded-full px-0.5 py-0.5 border border-white/10">
-              {['👍', '😂', '🔥', '🤯'].map(emoji => (
+              {[
+                {
+                  id: '👍',
+                  svg: (
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 md:w-5 md:h-5" xmlns="http://www.w3.org/2000/svg" fill="none">
+                      <path d="M7 22V11M2 13v7a2 2 0 002 2h11.5a2 2 0 001.97-1.66l1.2-7A2 2 0 0016.7 11H13V6a3 3 0 00-3-3l-3 7z" stroke="#60A5FA" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )
+                },
+                {
+                  id: '😂',
+                  svg: (
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 md:w-5 md:h-5" xmlns="http://www.w3.org/2000/svg" fill="none">
+                      <circle cx="12" cy="12" r="9" stroke="#FCD34D" strokeWidth="1.8"/>
+                      <path d="M8 13.5s1 3 4 3 4-3 4-3" stroke="#FCD34D" strokeWidth="1.8" strokeLinecap="round"/>
+                      <circle cx="9" cy="9.5" r="1" fill="#FCD34D"/>
+                      <circle cx="15" cy="9.5" r="1" fill="#FCD34D"/>
+                      <path d="M7 11c.5-1 1.5-1.5 2-1M17 11c-.5-1-1.5-1.5-2-1" stroke="#FCD34D" strokeWidth="1.2" strokeLinecap="round"/>
+                    </svg>
+                  )
+                },
+                {
+                  id: '🔥',
+                  svg: (
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 md:w-5 md:h-5" xmlns="http://www.w3.org/2000/svg" fill="none">
+                      <path d="M12 2c0 0-5 4.5-5 9a5 5 0 0010 0c0-2-1-3.5-2-4.5 0 1.5-1 2.5-2 2.5C13 9 14 7 12 2z" stroke="#F97316" strokeWidth="1.6" strokeLinejoin="round" fill="#F97316" fillOpacity="0.25"/>
+                      <path d="M12 13c0 0-2.5 1.5-2.5 3.5a2.5 2.5 0 005 0C14.5 14.5 12 13 12 13z" fill="#FCD34D" stroke="#F97316" strokeWidth="1" strokeLinejoin="round"/>
+                    </svg>
+                  )
+                },
+                {
+                  id: '🤯',
+                  svg: (
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 md:w-5 md:h-5" xmlns="http://www.w3.org/2000/svg" fill="none">
+                      <circle cx="12" cy="13" r="7" stroke="#C084FC" strokeWidth="1.8"/>
+                      <circle cx="9.5" cy="12" r="1" fill="#C084FC"/>
+                      <circle cx="14.5" cy="12" r="1" fill="#C084FC"/>
+                      <path d="M9.5 16.5s1-1.5 2.5-1.5 2.5 1.5 2.5 1.5" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round"/>
+                      <path d="M9 6l1 2M12 4v2M15 6l-1 2" stroke="#C084FC" strokeWidth="1.5" strokeLinecap="round"/>
+                      <path d="M7.5 8l1.5 1.5M16.5 8l-1.5 1.5" stroke="#C084FC" strokeWidth="1.3" strokeLinecap="round"/>
+                    </svg>
+                  )
+                },
+              ].map(({ id, svg }) => (
                 <button
-                  key={emoji}
-                  onClick={() => sendReaction(emoji)}
-                  className="w-6 h-6 md:w-9 md:h-9 flex items-center justify-center text-xs md:text-lg hover:scale-125 transition-transform active:scale-95"
+                  key={id}
+                  onClick={() => sendReaction(id)}
+                  className="w-6 h-6 md:w-9 md:h-9 flex items-center justify-center hover:scale-125 transition-transform active:scale-95"
                 >
-                  {emoji}
+                  {svg}
                 </button>
               ))}
             </div>

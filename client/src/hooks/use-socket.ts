@@ -61,7 +61,7 @@ export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
   // Track whether this is a reconnect (socket already had a previous connection)
   const hasConnectedBeforeRef = useRef(false);
-  // ── Yellow #7 fix: use a ref instead of reading stale closure state ────────
+  // Use a ref instead of reading stale closure state
   const isConnectedRef = useRef(false);
 
   useEffect(() => {
@@ -125,9 +125,8 @@ export function useSocket() {
     });
 
     newSocket.on('error', (data: { message: string }) => {
-      // Fix #2: if we're reconnecting and the server says the room doesn't exist,
-      // it almost certainly restarted and lost state. Show a friendlier message
-      // than the generic "No room with that code exists" error.
+      // On reconnect, if the server says the room doesn't exist it almost certainly
+      // restarted and lost state. Show a friendlier message than the generic error.
       const isReconnectRoomMissing =
         hasConnectedBeforeRef.current &&
         data.message?.toLowerCase().includes('no room with that code');
@@ -140,7 +139,26 @@ export function useSocket() {
 
     newSocket.on('gameState', (roomData: Room) => {
       setGameState(prev => {
-        const me = roomData.players.find(p => p.id === newSocket.id) || null;
+        // PRIMARY FIX: me is derived by matching socket.id — but during the reconnect
+        // window the server still has the player stored under their OLD socket ID
+        // (isReconnecting=true), while newSocket.id is already the NEW socket ID.
+        // This causes `me` to be null for 1–2 gameState ticks, making GameRoom render
+        // the blank "Entering Room..." spinner for the reconnecting player.
+        //
+        // Fix: if the id-based lookup misses, fall back to name-based lookup using the
+        // stored identity. We only do this when room is non-null (we were in a game),
+        // and only when the candidate player is flagged isReconnecting — meaning the
+        // server itself knows this is a mid-reconnect state, not a name collision.
+        let me = roomData.players.find(p => p.id === newSocket.id) || null;
+        if (!me && prev.room) {
+          const storedName = sessionStorage.getItem('playerName');
+          if (storedName) {
+            const candidate = roomData.players.find(
+              p => p.name.toLowerCase() === storedName.toLowerCase() && p.isReconnecting
+            );
+            if (candidate) me = candidate;
+          }
+        }
         const topicRejection = roomData.currentQuestion ? null : prev.topicRejection;
         const isNewTopicSelection =
           roomData.status === 'topic_selection' && prev.room?.status !== 'topic_selection';
@@ -215,12 +233,12 @@ export function useSocket() {
       setGameState(prev => ({ ...prev, topicSuggestions: data.suggestions, loadingSuggestions: false }));
     });
 
-    // Fix #5: server warns 30s before deleting an ended room
+    // Server warns 30s before deleting an ended room
     newSocket.on('roomExpired', () => {
       setGameState(prev => ({ ...prev, roomExpired: true }));
     });
 
-    // Fix #3 — server kicked this player
+    // Server kicked this player — clear identity and surface the kicked screen
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
       // Do NOT replace URL here — wouter reads the URL to decide which
@@ -268,6 +286,16 @@ export function useSocket() {
     socketRef.current.emit('selectTopic', { topic, ...(difficulty ? { difficulty } : {}) });
   }, []);
 
+  const updateTopicMode = useCallback((topicMode: 'live' | 'preset') => {
+    if (!socketRef.current) return;
+    socketRef.current.emit('updateTopicMode', { topicMode });
+  }, []);
+
+  const submitPresetTopics = useCallback((topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) => {
+    if (!socketRef.current) return;
+    socketRef.current.emit('submitPresetTopics', { topics });
+  }, []);
+
   const submitAnswer = useCallback((answerIndex: number) => {
     if (!socketRef.current) return;
     track('answer_submitted');
@@ -289,7 +317,7 @@ export function useSocket() {
     socketRef.current.emit('leaveRoom');
   }, []);
 
-  // Fix #3 — host kick
+  // Host kick — emit to server
   const kickPlayer = useCallback((targetId: string) => {
     if (!socketRef.current) return;
     socketRef.current.emit('kickPlayer', { targetId });
@@ -309,10 +337,7 @@ export function useSocket() {
     setGameState(prev => ({ ...prev, error: null }));
   }, []);
 
-  // Fix #3 — listen for kick event
-  // (registered inside the socket effect but exposed here for clarity)
-
-  // Fix #2 + #5: allow UI to dismiss these states
+  // Allow UI to dismiss error/modal states
   const clearWasKicked = useCallback(() => {
     setGameState(prev => ({ ...prev, wasKicked: false, kickMessage: null }));
   }, []);
@@ -345,6 +370,8 @@ export function useSocket() {
     setReady,
     startGame,
     selectTopic,
+    updateTopicMode,
+    submitPresetTopics,
     submitAnswer,
     sendReaction,
     resetGame,

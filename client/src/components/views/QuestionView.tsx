@@ -2,10 +2,10 @@ import { Room, Player } from "@shared/schema";
 import { Card } from "../Card";
 import { Timer } from "../Timer";
 import { Avatar } from "../Avatar";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { useAudioSystem } from "@/hooks/use-audio";
-import { CheckCircle, CheckCircle2, XCircle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { CheckCircle, CheckCircle2, XCircle, TrendingUp, TrendingDown, Minus, Zap, Eye } from "lucide-react";
 
 interface Props {
   room: Room;
@@ -17,6 +17,10 @@ interface Props {
 export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const { playSound } = useAudioSystem();
+  // Respect prefers-reduced-motion — Framer Motion's repeat:Infinity
+  // animations run on the JS thread via rAF at 60fps, which causes thermal throttling
+  // on mid-range Android. Gate all infinite spinner animations behind this hook.
+  const reduceMotion = useReducedMotion();
 
   const question = room.currentQuestion;
   const myRoomAnswer = room.answers[me.id];
@@ -73,13 +77,13 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
                 key={i}
                 className="absolute rounded-full border border-primary/40"
                 style={{ width: 32 + i * 22, height: 32 + i * 22 }}
-                animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0.15, 0.6] }}
-                transition={{ duration: 1.6, repeat: Infinity, delay: i * 0.3, ease: 'easeInOut' }}
+                animate={reduceMotion ? {} : { scale: [1, 1.15, 1], opacity: [0.6, 0.15, 0.6] }}
+                transition={{ duration: 1.6, repeat: reduceMotion ? 0 : Infinity, delay: i * 0.3, ease: 'easeInOut' }}
               />
             ))}
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+              animate={reduceMotion ? {} : { rotate: 360 }}
+              transition={{ duration: 1.2, repeat: reduceMotion ? 0 : Infinity, ease: "linear" }}
               className="w-10 h-10 relative z-10"
             >
               <svg className="w-full h-full text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -90,19 +94,20 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
 
           <motion.h2
             className="text-xl md:text-2xl font-display font-bold text-white mb-1"
-            animate={{ opacity: [1, 0.7, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
+            animate={reduceMotion ? {} : { opacity: [1, 0.7, 1] }}
+            transition={{ duration: 2, repeat: reduceMotion ? 0 : Infinity }}
           >
             {topicRejection ? 'Finding a better topic…' : 'Locking in your question...'}
           </motion.h2>
 
           <motion.p
-            className="text-white/40 text-sm md:text-base mb-4 italic"
+            className="text-white/40 text-sm md:text-base mb-4 italic flex items-center justify-center gap-1.5"
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            ⚡ AI is on it — faster than you can say "I knew that"
+            <Zap className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+            AI is on it — faster than you can say "I knew that"
           </motion.p>
 
           {room.currentTopic && (
@@ -116,8 +121,8 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
           <div className="relative w-48 h-1 mx-auto mt-6 rounded-full bg-white/10 overflow-hidden">
             <motion.div
               className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-primary to-transparent"
-              animate={{ x: ['-100%', '400%'] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+              animate={reduceMotion ? {} : { x: ['-100%', '400%'] }}
+              transition={{ duration: 1.2, repeat: reduceMotion ? 0 : Infinity, ease: 'easeInOut' }}
             />
           </div>
         </Card>
@@ -181,11 +186,11 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
             : <><TrendingDown className="w-3 h-3" />#{myRank}</>}
         </span>
         <div className="ml-auto shrink-0">
-          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 18} />
+          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 25} />
         </div>
       </div>
 
-      {/* Fix #9 — Score mode: progress bar toward target, turns red when close */}
+      {/* Score mode: progress bar toward target, turns red when close */}
       {room.mode === 'score' && (() => {
         const leaderScore = Math.max(0, ...room.players.map(p => p.score));
         const pct = Math.min(100, Math.round((leaderScore / room.target) * 100));
@@ -199,8 +204,8 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
                 transition={{ duration: 0.5 }}
               />
             </div>
-            <span className={`text-[10px] font-bold shrink-0 ${isClose ? 'text-red-400' : 'text-white/40'}`}>
-              {isClose ? '⚡' : ''}{leaderScore}/{room.target}
+            <span className={`text-[10px] font-bold shrink-0 flex items-center gap-0.5 ${isClose ? 'text-red-400' : 'text-white/40'}`}>
+              {isClose && <Zap className="w-2.5 h-2.5 fill-current" />}{leaderScore}/{room.target}
             </span>
           </div>
         );
@@ -329,7 +334,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
               {answered
                 ? <CheckCircle className="w-3 h-3 text-green-400 shrink-0" />
                 : isObserver
-                  ? <span className="text-[10px] shrink-0">👀</span>
+                  ? <Eye className="w-3 h-3 text-yellow-400/70 shrink-0" />
                   : <span className="w-2.5 h-2.5 rounded-full border border-white/30 shrink-0 animate-pulse" />
               }
               <span className="truncate max-w-[60px]">{p.id === me.id ? 'You' : p.name}</span>

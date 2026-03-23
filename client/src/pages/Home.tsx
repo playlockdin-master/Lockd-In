@@ -179,12 +179,50 @@ export default function Home() {
         >
           <div className="grid grid-cols-3 gap-3">
             {[
-              { icon: "🎯", step: "1", title: "Pick a topic", desc: "Chess, Bollywood, Brawlhalla — anything" },
-              { icon: "⚡", step: "2", title: "AI generates", desc: "A question only real fans get right" },
-              { icon: "🏆", step: "3", title: "Race to answer", desc: "15 seconds. Speed + accuracy = points" },
+              {
+                icon: (
+                  <svg viewBox="0 0 36 36" className="w-8 h-8" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="18" cy="18" r="16" fill="#5B21B6" opacity="0.7"/>
+                    <circle cx="18" cy="18" r="10" fill="none" stroke="#A855F7" strokeWidth="2"/>
+                    <circle cx="18" cy="18" r="5" fill="none" stroke="#C084FC" strokeWidth="1.5"/>
+                    <circle cx="18" cy="18" r="2" fill="white"/>
+                    <line x1="18" y1="2" x2="18" y2="8" stroke="#A855F7" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="18" y1="28" x2="18" y2="34" stroke="#A855F7" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="2" y1="18" x2="8" y2="18" stroke="#A855F7" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="28" y1="18" x2="34" y2="18" stroke="#A855F7" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                ),
+                step: "1", title: "Pick a topic", desc: "Science, History, Geography — anything"
+              },
+              {
+                icon: (
+                  <svg viewBox="0 0 36 36" className="w-8 h-8" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="18" cy="18" r="16" fill="#1E3A5F" opacity="0.7"/>
+                    <path d="M18 6 L20.5 14 L29 14 L22.5 19.5 L25 28 L18 23 L11 28 L13.5 19.5 L7 14 L15.5 14 Z" fill="none" stroke="#60A5FA" strokeWidth="1.5" strokeLinejoin="round"/>
+                    <path d="M18 10 L19.8 15.5 L25.5 15.5 L21 19 L22.8 24.5 L18 21 L13.2 24.5 L15 19 L10.5 15.5 L16.2 15.5 Z" fill="#3B82F6" opacity="0.5"/>
+                    <circle cx="18" cy="18" r="2.5" fill="white"/>
+                    <circle cx="18" cy="18" r="1" fill="#60A5FA"/>
+                  </svg>
+                ),
+                step: "2", title: "AI generates", desc: "A question only real experts get right"
+              },
+              {
+                icon: (
+                  <svg viewBox="0 0 36 36" className="w-8 h-8" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="18" cy="18" r="16" fill="#78350F" opacity="0.7"/>
+                    <path d="M11 28 L11 16 Q11 8 18 6 Q25 8 25 16 L25 28" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M13 28 L13 17 Q13 10 18 9 Q23 10 23 17 L23 28" fill="#F59E0B" opacity="0.25"/>
+                    <rect x="9" y="27" width="18" height="2.5" rx="1.25" fill="#F59E0B"/>
+                    <rect x="12" y="24" width="12" height="1.5" rx="0.75" fill="#FCD34D" opacity="0.6"/>
+                    <circle cx="18" cy="6" r="2.5" fill="#FCD34D"/>
+                    <path d="M16 22 L17.5 19 L18 21 L19 18 L20 22" fill="none" stroke="#FCD34D" strokeWidth="1" strokeLinejoin="round"/>
+                  </svg>
+                ),
+                step: "3", title: "Race to answer", desc: "15 seconds. Speed + accuracy = points"
+              },
             ].map(({ icon, step, title, desc }) => (
               <div key={step} className="glass-panel rounded-2xl p-3 text-center flex flex-col items-center gap-1.5">
-                <span className="text-2xl">{icon}</span>
+                {icon}
                 <p className="text-white text-xs font-bold">{title}</p>
                 <p className="text-white/40 text-[10px] leading-snug">{desc}</p>
               </div>

@@ -25,7 +25,17 @@ function accuracy(stats: TopicStat[]): number {
   return total === 0 ? 0 : Math.round((correct / total) * 100);
 }
 
+// Canvas-safe rank labels — emoji inside SVG <text> nodes are rasterized as blank
+// boxes when the SVG is drawn to a canvas on most mobile browsers. Use plain text.
 function rankLabel(rank: number): string {
+  if (rank === 1) return "#1 Winner";
+  if (rank === 2) return "#2 Place";
+  if (rank === 3) return "#3 Place";
+  return `#${rank}`;
+}
+
+// Display-only rank labels — used in the live HTML preview (not the canvas path)
+function rankLabelDisplay(rank: number): string {
   if (rank === 1) return "🥇 Winner";
   if (rank === 2) return "🥈 2nd place";
   if (rank === 3) return "🥉 3rd place";
@@ -60,7 +70,7 @@ function PassportCard({ me, room, topicStats, bestStreak }: Props) {
           borderRadius: 20, padding: "4px 12px",
           fontSize: 11, fontWeight: 600, color: "#A855F7", letterSpacing: 1,
         }}>
-          {rankLabel(rank)}
+          {rankLabelDisplay(rank)}
         </div>
       </div>
 
@@ -295,7 +305,8 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
         if (pillX + w > 356) { pillX = 24; pillY += 32; }
         pillSvg += (
           "<rect x=\"" + pillX + "\" y=\"" + pillY + "\" width=\"" + w + "\" height=\"24\" rx=\"12\" fill=\"" + (hot ? "#78350f" : "#ffffff0d") + "\" stroke=\"" + (hot ? "#f59e0b44" : "none") + "\"/>" +
-          "<text x=\"" + (pillX + w / 2) + "\" y=\"" + (pillY + 16) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"11\" font-weight=\"" + (hot ? "600" : "400") + "\" fill=\"" + (hot ? "#fbbf24" : "#ffffff66") + "\">" + t + (hot ? " 🔥" : "") + "</text>"
+          // Use ★ instead of 🔥 emoji — emoji in SVG <text> render as blank boxes on canvas
+          "<text x=\"" + (pillX + w / 2) + "\" y=\"" + (pillY + 16) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"11\" font-weight=\"" + (hot ? "600" : "400") + "\" fill=\"" + (hot ? "#fbbf24" : "#ffffff66") + "\">" + (hot ? "★ " : "") + t + "</text>"
         );
         pillX += w + 8;
       });
@@ -308,7 +319,8 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
         "<defs><radialGradient id=\"sg\" cx=\"20%\" cy=\"30%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#92400e\" stop-opacity=\"0.15\"/><stop offset=\"100%\" stop-color=\"#0d0d1a\" stop-opacity=\"0\"/></radialGradient></defs>" +
         "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"url(#sg)\"/>" +
         "<rect x=\"24\" y=\"20\" width=\"44\" height=\"44\" rx=\"12\" fill=\"#78350f33\" stroke=\"#f59e0b44\" stroke-width=\"1\"/>" +
-        "<text x=\"46\" y=\"50\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"22\">🔥</text>" +
+        // SVG flame path replaces the 🔥 emoji <text> node — emoji don't render on canvas
+        "<path d=\"M46 58 C46 52 42 48 44 43 C41 46 39 50 40 54 C38 52 38 48 39 45 C36 48 35 53 37 57 C35 55 34 51 35 48 C31 52 31 59 36 63 C34 61 34 57 36 56 C37 60 41 63 46 63 C51 63 54 59 54 55 C54 51 51 48 48 46 C50 50 49 54 46 58Z\" fill=\"#f97316\"/>" +
         "<text x=\"80\" y=\"40\" font-family=\"system-ui\" font-size=\"18\" font-weight=\"900\" fill=\"white\">" + me.name + " hit a x" + bestStreak + " streak</text>" +
         "<text x=\"80\" y=\"58\" font-family=\"system-ui\" font-size=\"12\" fill=\"#ffffff44\">in Flooq · " + room.players.length + " players</text>" +
         pillSvg +
@@ -321,22 +333,94 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
     }
   };
 
-    const handleShare = async () => {
-    // On mobile with Web Share API — try sharing the SVG file directly
+  const svgToBlob = (): Blob => {
     const svgStr = buildShareSvg();
-    const blob   = new Blob([svgStr], { type: 'image/svg+xml' });
-    const file   = new File([blob], `flooq-result.svg`, { type: 'image/svg+xml' });
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
+    return new Blob([svgStr], { type: 'image/svg+xml' });
+  };
+
+  const svgToPngBlob = async (): Promise<Blob> => {
+    const svgStr = buildShareSvg();
+    // Parse explicit width/height from the SVG string — naturalWidth/Height on an
+    // SVG loaded via createObjectURL returns 0 on iOS Safari and some Android browsers,
+    // which causes the canvas to be drawn at 0×0 and toBlob to return a blank image.
+    const wMatch = svgStr.match(/width="(\d+)"/);
+    const hMatch = svgStr.match(/height="(\d+)"/);
+    const svgW = wMatch ? parseInt(wMatch[1]) : 380;
+    const svgH = hMatch ? parseInt(hMatch[1]) : 300;
+    // Render at 2× for retina — images shared to social apps look sharp on HiDPI screens.
+    const SCALE = 2;
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      // Use a data: URL instead of a blob: URL — iOS Safari's canvas security model
+      // can taint the canvas when drawing from a blob: URL, making toBlob() fail silently.
+      const encoded = encodeURIComponent(svgStr);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width  = svgW * SCALE;
+        canvas.height = svgH * SCALE;
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(SCALE, SCALE);
+        ctx.drawImage(img, 0, 0, svgW, svgH);
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas toBlob failed'));
+        }, 'image/png');
+      };
+      img.onerror = () => reject(new Error('SVG load failed'));
+      img.src = `data:image/svg+xml;charset=utf-8,${encoded}`;
+    });
+  };
+
+  const handleCopyImage = async () => {
+    try {
+      // Try PNG copy first (supported in Chrome/Edge)
+      if (typeof ClipboardItem !== 'undefined') {
+        const pngBlob = await svgToPngBlob();
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        return;
+      }
+    } catch { /* fallthrough */ }
+    // Fallback: copy share text
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* silent fail */ }
+  };
+
+  const handleDownload = () => {
+    const blob = svgToBlob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `flooq-result.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleShare = async () => {
+    // Always share as PNG — SVG files are rejected silently by WhatsApp, Instagram,
+    // iMessage, and most social apps. PNG is the only universally accepted image format.
+    try {
+      const pngBlob = await svgToPngBlob();
+      const file = new File([pngBlob], 'flooq-result.png', { type: 'image/png' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'My Flooq result', text: shareText });
         return;
-      } catch { /* fallthrough */ }
-    }
-    // Share text only if file sharing not supported
+      }
+    } catch { /* fallthrough to text share */ }
+
+    // Share text only if file sharing not supported (e.g. desktop)
     if (navigator.share) {
       try { await navigator.share({ text: shareText }); return; } catch { /* fallthrough */ }
     }
-    // Desktop fallback — copy image
+
+    // Desktop / unsupported mobile — copy PNG to clipboard with visible feedback
     await handleCopyImage();
   };
 

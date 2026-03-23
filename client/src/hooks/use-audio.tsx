@@ -2,12 +2,18 @@ import { useState, useCallback, useRef, createContext, useContext, useEffect } f
 
 type SoundType = 'click' | 'tick' | 'correct' | 'incorrect' | 'notification';
 
+// Bug 1 fix: prefer MP3 (smaller, iOS-compatible) and fall back to WAV only if needed.
+const _canPlayMp3 = typeof Audio !== 'undefined'
+  ? new Audio().canPlayType('audio/mpeg') !== ''
+  : false;
+const _ext = _canPlayMp3 ? '.mp3' : '.wav';
+
 const SOUND_URLS: Record<SoundType, string> = {
-  click:        '/assets/click.wav',
-  tick:         '/assets/tick.wav',
-  correct:      '/assets/correct.wav',
-  incorrect:    '/assets/incorrect.wav',
-  notification: '/assets/notification.wav',
+  click:        `/assets/click${_ext}`,
+  tick:         `/assets/tick${_ext}`,
+  correct:      `/assets/correct${_ext}`,
+  incorrect:    `/assets/incorrect${_ext}`,
+  notification: `/assets/notification${_ext}`,
 };
 
 const SOUND_VOLUMES: Record<SoundType, number> = {
@@ -23,7 +29,7 @@ const POOL_SIZES: Partial<Record<SoundType, number>> = { tick: 3, click: 2 };
 const SFX_FADE_OUT_MS = 120;
 const SFX_MUTE_KEY    = 'flooq_sfx_muted';
 const BGM_MUTE_KEY    = 'flooq_bgm_muted';
-const BGM_URL         = '/assets/ambient-bgm.wav'; // mp3 preferred on iOS but wav used as fallback
+const BGM_URL         = `/assets/ambient-bgm${_ext}`; // MP3 on iOS/modern browsers, WAV as fallback
 const BGM_VOLUME      = 0.12;
 const BGM_FADE_STEPS  = 40;
 const BGM_FADE_MS     = 1500;
@@ -173,6 +179,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Cleanup on unmount
   useEffect(() => () => { clearFade(); bgmRef.current?.pause(); }, [clearFade]);
 
+  // Bug 2 fix: pause BGM when the tab is hidden to save CPU/battery, resume when visible again.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!bgmRef.current) return;
+      if (document.hidden) {
+        bgmRef.current.pause();
+      } else if (!isBgmMutedRef.current) {
+        bgmRef.current.play().catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   // ── Toggle handlers ─────────────────────────────────────────────────────────
   // CRITICAL: fadeIn/fadeOut MUST be called synchronously here, inside the
   // user-gesture call stack. Do NOT call them from a useEffect reacting to state
@@ -205,6 +225,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     const playSfx = (audio: HTMLAudioElement) => {
       try {
+        // Bug 3 fix: clear any in-flight fade interval on this element before reuse,
+        // so a recycled pool element doesn't have two intervals fighting over volume.
+        const elem = audio as HTMLAudioElement & { _fadeId?: ReturnType<typeof setInterval> };
+        if (elem._fadeId !== undefined) { clearInterval(elem._fadeId); elem._fadeId = undefined; }
+
         // Guard: setting currentTime on an unloaded element can throw in Safari
         if (audio.readyState >= 1) audio.currentTime = 0;
         audio.volume = targetVolume;
@@ -217,9 +242,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
                 let s = 0;
                 const steps = 12;
                 const delta = audio.volume / steps;
-                const id = setInterval(() => {
+                elem._fadeId = setInterval(() => {
                   audio.volume = Math.max(0, audio.volume - delta);
-                  if (++s >= steps) clearInterval(id);
+                  if (++s >= steps) { clearInterval(elem._fadeId); elem._fadeId = undefined; }
                 }, SFX_FADE_OUT_MS / steps);
               }
             }, fadeStartAt);

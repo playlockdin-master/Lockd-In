@@ -7,7 +7,7 @@ function log(msg: string)   { console.log( `[INFO]  ${ts()} [game] ${msg}`); }
 function warn(msg: string)  { console.warn( `[WARN]  ${ts()} [game] ${msg}`); }
 function err(msg: string)   { console.error(`[ERROR] ${ts()} [game] ${msg}`); }
 import { Room, Player, validatePlayerNameShared, containsProfanity, TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS, TOPIC_TIME_MIN, TOPIC_TIME_MAX, QUESTION_TIME_MIN, QUESTION_TIME_MAX, type RegionMode, type RegionId, REGIONS } from "@shared/schema";
-import { generateQuestion, generateTopicSuggestions, suggestSimilarTopic, TOPIC_DATASET, clearRoomCache, buildRegionContext } from "./ai";
+import { generateQuestion, generateTopicSuggestions, suggestSimilarTopic, TOPIC_DATASET, clearRoomCache, buildRegionContext, generateQuestionsForPresetMode } from "./ai";
 
 // ── Per-socket rate limiter ──────────────────────────────────────────────────
 // Tracks event counts per socket within a rolling 10-second window.
@@ -23,6 +23,7 @@ const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
   updateSettings:       { max: 10, windowMs: 10_000 },
   startGame:            { max: 5,  windowMs: 10_000 },
   playAgain:            { max: 5,  windowMs: 10_000 },
+  submitPresetTopics:   { max: 5,  windowMs: 10_000 },
   resetGame:            { max: 5,  windowMs: 10_000 },
   updateAvatar:         { max: 10, windowMs: 10_000 },
 };
@@ -246,6 +247,7 @@ export function setupGameSockets(io: Server) {
           askedQuestions: [],
           answers: {},
           regionMode: "global",
+          topicMode: "live",
         };
         rooms.set(code, room);
         playerJoinOrder.set(code, []);
@@ -442,6 +444,7 @@ export function setupGameSockets(io: Server) {
       if (!validTargets.includes(target)) return;
       room.mode = mode;
       room.target = target;
+      // topicMode is updated separately via updateTopicMode event
       // Validate and apply timer overrides if provided
       if (typeof topicTimeSecs === 'number' && topicTimeSecs >= TOPIC_TIME_MIN && topicTimeSecs <= TOPIC_TIME_MAX) {
         room.topicTimeSecs = topicTimeSecs;
@@ -516,7 +519,45 @@ export function setupGameSockets(io: Server) {
         p.score = 0;
         p.streak = 0;
       });
-      startTopicSelection(room, io);
+
+      if (room.topicMode === 'preset') {
+        // BUG FIX 4: Check host submission first with the correct sentinel.
+        // presetTopics[id] === undefined  →  never submitted (waiting)
+        // presetTopics[id] === []         →  explicitly skipped (0 topics)
+        // The old hostTopics check used `?? []` which made undefined look like
+        // an empty submission, letting the host start without ever submitting.
+        const host = room.players.find(p => p.isHost);
+        const hostSubmission = host ? (room.presetTopics ?? {})[host.id] : undefined;
+        const hostNeverSubmitted = hostSubmission === undefined;
+        const hostSubmittedEmpty = Array.isArray(hostSubmission) && hostSubmission.length === 0;
+
+        if (hostNeverSubmitted || hostSubmittedEmpty) {
+          socket.emit('error', { message: 'Host must submit at least 1 topic before starting.' });
+          room.status = 'lobby';
+          room.currentRound = 0;
+          room.players.forEach(p => { p.score = 0; p.streak = 0; });
+          io.to(room.code).emit('gameState', serializeRoom(room));
+          return;
+        }
+
+        // Check all non-host players have either submitted OR explicitly passed (submitted empty array)
+        const playersNotYetSubmitted = room.players.filter(p => (room.presetTopics ?? {})[p.id] === undefined);
+        if (playersNotYetSubmitted.length > 0) {
+          const names = playersNotYetSubmitted.map(p => p.name).join(', ');
+          socket.emit('error', { message: `Still waiting for: ${names} (they can submit 0 topics to skip)` });
+          room.status = 'lobby';
+          room.currentRound = 0;
+          room.players.forEach(p => { p.score = 0; p.streak = 0; });
+          io.to(room.code).emit('gameState', serializeRoom(room));
+          return;
+        }
+
+        // Collect all submitted topics — {topic, difficulty} objects
+        const allTopicEntries = Object.values(room.presetTopics ?? {}).flat();
+        startPresetMode(room, io, allTopicEntries);
+      } else {
+        startTopicSelection(room, io);
+      }
     });
 
     socket.on("getTopicSuggestions", async () => {
@@ -586,6 +627,50 @@ export function setupGameSockets(io: Server) {
       }
     });
 
+    socket.on("updateTopicMode", ({ topicMode }) => {
+      const room = getRoomBySocketId(socket.id);
+      if (!room || room.status !== 'lobby') return;
+      const player = room.players.find(p => p.id === socket.id);
+      if (!player?.isHost) return;
+      if (topicMode !== 'live' && topicMode !== 'preset') return;
+      room.topicMode = topicMode;
+      // Reset preset topics when switching modes
+      if (topicMode === 'live') {
+        room.presetTopics = {};
+        room.pregeneratedQuestions = [];
+      }
+      io.to(room.code).emit('gameState', serializeRoom(room));
+    });
+
+    socket.on("submitPresetTopics", ({ topics }) => {
+      if (isRateLimited(socket.id, 'submitPresetTopics')) return;
+      const room = getRoomBySocketId(socket.id);
+      if (!room || room.status !== 'lobby') return;
+      const player = room.players.find(p => p.id === socket.id);
+      if (!player) return;
+      if (!Array.isArray(topics)) return;
+      const validDifficulties = ['Easy', 'Medium', 'Hard'];
+      // Validate: 1–5 topics with optional difficulty, no profanity
+      const cleaned: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[] = topics
+        .filter((t: any) => t && typeof t.topic === 'string' && t.topic.trim().length >= 2)
+        .map((t: any) => ({
+          topic: t.topic.trim().slice(0, 50),
+          difficulty: validDifficulties.includes(t.difficulty) ? t.difficulty : 'Medium',
+        }))
+        .filter((t: any) => !containsProfanity(t.topic))
+        .slice(0, 5);
+      // Host must have >= 1 topic; others can submit 0 (empty array means done)
+      const isHost = player.isHost;
+      if (isHost && cleaned.length === 0) {
+        socket.emit('error', { message: 'As host, please add at least 1 topic.' });
+        return;
+      }
+      if (!room.presetTopics) room.presetTopics = {};
+      room.presetTopics[socket.id] = cleaned;
+      io.to(room.code).emit('gameState', serializeRoom(room));
+      log(`${player.name} submitted ${cleaned.length} preset topic(s) in ${room.code}`);
+    });
+
     socket.on("playAgain", () => {
       if (isRateLimited(socket.id, 'playAgain')) return;
       const room = getRoomBySocketId(socket.id);
@@ -632,6 +717,11 @@ export function setupGameSockets(io: Server) {
       delete room.resultsDeadline;
       room.playAgainIds = [];
       room.viewingResultsIds = [];
+      room.presetTopics = {};
+      room.pregeneratedQuestions = [];
+      // BUG FIX 5: Preserve topicMode — was hard-reset to 'live' here too,
+      // forcing host to re-select preset mode every time they reset.
+      // topicMode intentionally NOT reset here — keep the host's choice.
       room.players.forEach((p) => {
         p.score = 0;
         p.streak = 0;
@@ -807,6 +897,12 @@ function resetRoomToLobby(room: Room, io: Server) {
   delete room.resultsDeadline;
   room.playAgainIds = [];
   room.viewingResultsIds = [];
+  room.presetTopics = {};
+  room.pregeneratedQuestions = [];
+  // BUG FIX 5: Preserve topicMode so players who chose preset mode can play
+  // again without having to re-select it. Previously hard-coded to 'live',
+  // silently wiping the preset preference on every play-again cycle.
+  // topicMode intentionally NOT reset here — keep the host's choice.
   room.players.forEach((p) => {
     p.score = 0;
     p.streak = 0;
@@ -848,6 +944,9 @@ function serializeRoom(room: Room): object {
     regionMode:   room.regionMode ?? "global",
     regionId:     room.regionId,
     countryCode:  room.countryCode,
+    topicMode: room.topicMode ?? 'live',
+    presetTopics: room.presetTopics ?? {},
+    pregeneratedQuestionsCount: (room.pregeneratedQuestions ?? []).length,
   };
 }
 
@@ -1001,6 +1100,112 @@ function handleDisconnect(socketId: string, io: Server, saveGhostOnLeave = true)
   }
 }
 
+async function startPresetMode(room: Room, io: Server, allTopics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) {
+  const liveRoom = rooms.get(room.code);
+  if (!liveRoom || liveRoom.players.length === 0) return;
+  room = liveRoom;
+
+  room.status = 'generating';
+  io.to(room.code).emit('gameState', serializeRoom(room));
+  log(`[preset] generating ${room.target} questions for room ${room.code} from ${allTopics.length} topic(s)`);
+
+  try {
+    const regionCtx = buildRegionContext(room.regionMode, room.regionId, room.countryCode);
+    const questions = await generateQuestionsForPresetMode(allTopics, room.target, room.code, regionCtx || undefined);
+
+    const stillLive = rooms.get(room.code);
+    if (!stillLive || stillLive.players.length === 0) return;
+
+    stillLive.pregeneratedQuestions = questions;
+    log(`[preset] ${questions.length} questions ready for room ${room.code}`);
+
+    // Start first round immediately
+    startPresetRound(stillLive, io);
+  } catch (e: any) {
+    err(`[preset] question generation failed: ${e?.message}`);
+    const stillLive = rooms.get(room.code);
+    if (!stillLive) return;
+    stillLive.status = 'lobby';
+    stillLive.currentRound = 0;
+    stillLive.players.forEach(p => { p.score = 0; p.streak = 0; });
+    io.to(room.code).emit('gameState', serializeRoom(stillLive));
+    io.to(room.code).emit('error', { message: 'Failed to generate questions. Please try again.' });
+  }
+}
+
+function startPresetRound(room: Room, io: Server) {
+  const liveRoom = rooms.get(room.code);
+  if (!liveRoom || liveRoom.players.length === 0) return;
+  room = liveRoom;
+
+  const questions = room.pregeneratedQuestions ?? [];
+  const roundIndex = room.currentRound; // 0-based index into questions array
+
+  // Check score limit before starting next round
+  if (room.mode === 'score') {
+    const topScore = room.players.length > 0 ? Math.max(...room.players.map(p => p.score)) : 0;
+    if (topScore >= room.target) {
+      const sorted = [...room.players].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (b.lastPoints ?? 0) - (a.lastPoints ?? 0);
+      });
+      room.players.splice(0, room.players.length, ...sorted);
+      room.status = 'ended';
+      room.playAgainIds = [];
+      room.viewingResultsIds = room.players.map(p => p.id);
+      io.to(room.code).emit('gameState', serializeRoom(room));
+      scheduleEndedRoomCleanup(room, io);
+      return;
+    }
+  }
+
+  if (roundIndex >= questions.length) {
+    // All questions used — end game
+    room.status = 'ended';
+    room.playAgainIds = [];
+    room.viewingResultsIds = room.players.map(p => p.id);
+    io.to(room.code).emit('gameState', serializeRoom(room));
+    scheduleEndedRoomCleanup(room, io);
+    return;
+  }
+
+  room.currentRound++;
+  room.status = 'question';
+  room.answers = {};
+  room.currentQuestion = questions[roundIndex];
+  room.currentTopic = questions[roundIndex].topic;
+  room.questionDeadline = Date.now() + questionTimeMs(room);
+  room.roundPlayerIds = room.players.map(p => p.id);
+  room.fastestPlayerId = undefined;
+  room.players.forEach(p => {
+    delete p.lastAnswer;
+    delete p.lastAnswerCorrect;
+    delete p.lastPoints;
+  });
+
+  io.to(room.code).emit('gameState', serializeRoom(room));
+
+  setRoomTimer(room.code, () => {
+    proceedToResults(room, io);
+  }, questionTimeMs(room));
+}
+
+function scheduleEndedRoomCleanup(room: Room, io: Server) {
+  const ENDED_ROOM_TTL    = 5 * 60_000;
+  const EXPIRED_WARN_LEAD = 30_000;
+  setRoomTimer(room.code, () => {
+    const warnRoom = rooms.get(room.code);
+    if (warnRoom) io.to(room.code).emit('roomExpired', { message: 'Room session ended. Start a new game to keep playing.' });
+    setRoomTimer(room.code, () => {
+      const deadRoom = rooms.get(room.code);
+      if (deadRoom) deadRoom.players.forEach(p => socketRoomMap.delete(p.id));
+      rooms.delete(room.code);
+      playerJoinOrder.delete(room.code);
+      roomTimers.delete(room.code);
+    }, EXPIRED_WARN_LEAD);
+  }, ENDED_ROOM_TTL - EXPIRED_WARN_LEAD);
+}
+
 function startTopicSelection(room: Room, io: Server, incrementRound = true) {
   // ── Guard: re-fetch from Map — this may be called from a timer with a stale ref ──
   const liveRoom = rooms.get(room.code);
@@ -1110,8 +1315,7 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     // Track asked question text for within-game deduplication
     if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
     liveRoom.askedQuestions.push(question.text);
-    // Cap at 50 to prevent unbounded growth in long score-mode games
-    if (liveRoom.askedQuestions.length > 50) liveRoom.askedQuestions.shift();
+    // No cap — keep all questions for full-game deduplication
     // Use the AI's canonical topic label if provided (corrects typos & abbreviations like "ch3ss" → "Chess")
     if (question.canonicalTopic?.trim()) {
       liveRoom.currentTopic = question.canonicalTopic.trim();
@@ -1321,22 +1525,26 @@ function checkGameEndOrNextRound(room: Room, io: Server) {
   room = liveRoom;
 
   let ended = false;
-  if (room.mode === "round" && room.currentRound >= room.target) {
+  if (room.mode === 'round' && room.currentRound >= room.target) {
     ended = true;
-  } else if (room.mode === "score") {
-    // ── Guard against Math.max(...[]) === -Infinity when players array is empty
+  } else if (room.mode === 'score') {
     const topScore = room.players.length > 0
       ? Math.max(...room.players.map(p => p.score))
       : 0;
     if (topScore >= room.target) {
       ended = true;
-      // Tiebreaker: sort a COPY for display — do NOT mutate room.players in-place
-      // as that corrupts join order and host assignment for the next game.
       const sorted = [...room.players].sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return (b.lastPoints ?? 0) - (a.lastPoints ?? 0);
       });
       room.players.splice(0, room.players.length, ...sorted);
+    }
+  }
+  // For preset mode: also end if all pre-generated questions have been used
+  if (!ended && room.topicMode === 'preset') {
+    const totalQuestions = room.pregeneratedQuestions?.length ?? 0;
+    if (totalQuestions > 0 && room.currentRound >= totalQuestions) {
+      ended = true;
     }
   }
 
@@ -1381,6 +1589,10 @@ function checkGameEndOrNextRound(room: Room, io: Server) {
       }, EXPIRED_WARN_LEAD);
     }, ENDED_ROOM_TTL - EXPIRED_WARN_LEAD);
   } else {
-    startTopicSelection(room, io);
+    if (room.topicMode === 'preset') {
+      startPresetRound(room, io);
+    } else {
+      startTopicSelection(room, io);
+    }
   }
 }

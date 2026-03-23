@@ -5,7 +5,7 @@ import { Input } from "../Input";
 import { Timer } from "../Timer";
 import { Avatar } from "../Avatar";
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Search, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 
@@ -38,6 +38,9 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
   const inputRef = useRef<HTMLInputElement>(null);
   const { playSound } = useAudioSystem();
   const hasFetchedRef = useRef(false);
+  // Disable repeat:Infinity Framer Motion animations for users who prefer reduced motion —
+  // they run on the JS thread at 60fps and cause thermal throttling on mid-range devices.
+  const reduceMotion = useReducedMotion();
 
   const isMyTurn = room.topicSelectorId === me.id;
   const selector = room.players.find(p => p.id === room.topicSelectorId);
@@ -119,7 +122,14 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
         <div className="inline-block px-4 py-2 rounded-full glass-panel border border-primary/30">
           <p className="text-sm text-white/70">
             {isMyTurn ? (
-              <span className="text-primary font-semibold">🎯 Your turn to pick a topic</span>
+              <span className="text-primary font-semibold inline-flex items-center gap-1.5">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 inline" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.5"/>
+                  <circle cx="8" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.75"/>
+                  <circle cx="8" cy="8" r="1.75" fill="currentColor"/>
+                </svg>
+                Your turn to pick a topic
+              </span>
             ) : (
               <span>
                 <span className="text-primary font-semibold">{selector?.name}</span>
@@ -150,12 +160,19 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                     exit={{ opacity: 0 }}
                     className="mb-6 mx-2 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/40 text-left"
                   >
-                    <p className="text-destructive font-semibold text-sm mb-1">
-                      ❌ Can't make a trivia question from <span className="italic">"{topicRejection.badTopic}"</span>
+                    <p className="text-destructive font-semibold text-sm mb-1 flex items-center gap-1.5">
+                      <svg viewBox="0 0 16 16" className="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none">
+                        <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+                        <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      Can't make a trivia question from <span className="italic">"{topicRejection.badTopic}"</span>
                     </p>
                     <p className="text-white/50 text-xs mb-2">{topicRejection.reason}</p>
-                    <p className="text-white/70 text-xs">
-                      🎲 Switching to: <span className="text-primary font-bold">{topicRejection.newTopic}</span>
+                    <p className="text-white/70 text-xs flex items-center gap-1.5">
+                      <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none">
+                        <path d="M2 5h8l-2-2M10 5l2 2M2 11h8l-2-2M10 11l2 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Switching to: <span className="text-primary font-bold">{topicRejection.newTopic}</span>
                     </p>
                   </motion.div>
                 )}
@@ -167,13 +184,13 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                     key={i}
                     className="absolute rounded-full border border-primary/40"
                     style={{ width: 32 + i * 22, height: 32 + i * 22 }}
-                    animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0.15, 0.6] }}
-                    transition={{ duration: 1.6, repeat: Infinity, delay: i * 0.3, ease: 'easeInOut' }}
+                    animate={reduceMotion ? {} : { scale: [1, 1.15, 1], opacity: [0.6, 0.15, 0.6] }}
+                    transition={{ duration: 1.6, repeat: reduceMotion ? 0 : Infinity, delay: i * 0.3, ease: 'easeInOut' }}
                   />
                 ))}
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+                  animate={reduceMotion ? {} : { rotate: 360 }}
+                  transition={{ duration: 1.2, repeat: reduceMotion ? 0 : Infinity, ease: "linear" }}
                   className="w-10 h-10 relative z-10"
                 >
                   <Sparkles className="w-full h-full text-primary" />
@@ -182,18 +199,21 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
 
               <motion.h2
                 className="text-xl md:text-2xl font-display font-bold text-white mb-1"
-                animate={{ opacity: [1, 0.7, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
+                animate={reduceMotion ? {} : { opacity: [1, 0.7, 1] }}
+                transition={{ duration: 2, repeat: reduceMotion ? 0 : Infinity }}
               >
                 Locking in your question...
               </motion.h2>
               <motion.p
-                className="text-white/40 text-sm md:text-base mb-4 italic"
+                className="text-white/40 text-sm md:text-base mb-4 italic inline-flex items-center gap-1.5"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
               >
-                ⚡ AI is on it — faster than you can say "I knew that"
+                <svg viewBox="0 0 16 16" className="w-4 h-4 flex-shrink-0 not-italic" xmlns="http://www.w3.org/2000/svg" fill="none">
+                  <path d="M9 2L4 9h5l-2 5 7-8H9l1-4z" fill="currentColor" opacity="0.7" stroke="currentColor" strokeWidth="0.5" strokeLinejoin="round"/>
+                </svg>
+                AI is on it — faster than you can say "I knew that"
               </motion.p>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/30 mt-1">
                 <span className="text-white/50 text-sm">Topic:</span>
@@ -202,8 +222,8 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
               <div className="relative w-48 h-1 mx-auto mt-6 rounded-full bg-white/10 overflow-hidden">
                 <motion.div
                   className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-primary to-transparent"
-                  animate={{ x: ['-100%', '400%'] }}
-                  transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                  animate={reduceMotion ? {} : { x: ['-100%', '400%'] }}
+                  transition={{ duration: 1.2, repeat: reduceMotion ? 0 : Infinity, ease: 'easeInOut' }}
                 />
               </div>
             </Card>
@@ -214,15 +234,28 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
         {!isLoadingQuestion && isMyTurn && (
           <motion.div key="my-turn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full">
             <Card className="w-full border-primary/50 border-2">
-              <h2 className="text-2xl md:text-3xl font-display font-bold text-primary mb-1 text-center">🎯 Your Turn!</h2>
-              <p className="text-sm md:text-base text-white/50 mb-5 text-center">Any topic — broad or ultra niche, AI handles it!</p>
+              <h2 className="text-2xl md:text-3xl font-display font-bold text-primary mb-1 text-center">
+                <span className="inline-flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" className="w-7 h-7 inline" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4"/>
+                    <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.65"/>
+                    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+                    <line x1="12" y1="2" x2="12" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="2" y1="12" x2="6" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <line x1="18" y1="12" x2="22" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  Your Turn!
+                </span>
+              </h2>
+              <p className="text-sm md:text-base text-white/50 mb-5 text-center">Name any subject — AI will craft the perfect question!</p>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input
                   ref={inputRef}
                   value={topic}
                   onChange={(e) => { setTopic(e.target.value); onClearError(); }}
-                  placeholder="Any topic — Chess, Brawlhalla, Invoker Spells..."
+                  placeholder="e.g. Physics, World History, Space Exploration..."
                   icon={<Search className="w-5 h-5" />}
                   className="text-base md:text-lg py-3 md:py-4"
                   maxLength={60}
@@ -301,8 +334,8 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                   }
                   {loadingSuggestions && showSuggestions && (
                     <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      animate={reduceMotion ? {} : { rotate: 360 }}
+                      transition={{ duration: 1, repeat: reduceMotion ? 0 : Infinity, ease: "linear" }}
                       className="w-3 h-3 border border-white/30 border-t-white/70 rounded-full ml-1"
                     />
                   )}
@@ -355,8 +388,8 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
           <motion.div key="waiting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full">
             <Card className="text-center w-full">
               <motion.div
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
+                animate={reduceMotion ? {} : { scale: [1, 1.05, 1] }}
+                transition={{ duration: 2, repeat: reduceMotion ? 0 : Infinity }}
                 className="flex justify-center mb-4 md:mb-6"
               >
                 <Avatar avatarId={selector?.avatarId ?? 'ghost'} mood="idle" size={64} />

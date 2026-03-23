@@ -432,7 +432,7 @@ function buildUserPrompt(
 
   // Pass actual question text so the AI avoids the same facts, not just the same topics
   const usedQuestions = askedQuestions.length
-    ? `Already asked these questions — do NOT ask about the same facts, people, or events:\n${askedQuestions.map((q) => `- ${q}`).join("\n")}\n`
+    ? `Already asked these questions — do NOT repeat the same facts, people, or events:\n${askedQuestions.slice(-30).map((q) => `- ${q}`).join("\n")}\n`
     : "";
 
   const regionBlock = regionContext
@@ -800,7 +800,7 @@ export async function generateQuestion(
   const difficulty  = difficultyOverride ?? getTargetDifficulty(roomId);
   const attemptNum  = MAX_RETRIES - retries;
   const temperature = Math.min(BASE_TEMP + attemptNum * 0.1, 0.9);
-  const userPrompt  = buildUserPrompt(safeTopic, difficulty, specificity, recentAngles.slice(-8), askedQuestions.slice(-10), regionContext);
+  const userPrompt  = buildUserPrompt(safeTopic, difficulty, specificity, recentAngles.slice(-8), askedQuestions, regionContext);
   const messages    = [
     { role: "system", content: SYSTEM_INSTRUCTION },
     { role: "user",   content: userPrompt },
@@ -828,6 +828,17 @@ export async function generateQuestion(
 
     const validated = QuestionResponseSchema.parse(parsed);
     validateQuestion(validated);
+
+    // Extra dedup check — if this question text was already asked this game, retry
+    const fingerprint = validated.text.slice(0, 80).toLowerCase().trim();
+    const alreadyAsked = askedQuestions.some(q => q.slice(0, 80).toLowerCase().trim() === fingerprint);
+    if (alreadyAsked && retries > 0) {
+      clearTimeout(timeoutId);
+      console.warn(`[dedup] duplicate question detected for topic="${safeTopic}" — retrying`);
+      await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
+      return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext);
+    }
+
     recordDifficulty(roomId, validated.difficulty);
     addToCache(safeTopic, validated);
     const shuffled = shuffleOptions(validated);
@@ -852,4 +863,57 @@ export async function generateQuestion(
     console.error("[exhausted]", err?.message);
     return getRandomFallback();
   }
+}
+// ---------------------------------------------------------------------------
+// BATCH QUESTION GENERATION — preset mode
+// Generates all questions for a game in one go using multiple parallel calls.
+// Topics are cycled if there are fewer topics than rounds.
+// ---------------------------------------------------------------------------
+
+export async function generateQuestionsForPresetMode(
+  topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[],
+  totalRounds: number,
+  roomId: string,
+  regionContext?: string,
+): Promise<(Question & { topic: string })[]> {
+  if (topics.length === 0) throw new Error('No topics provided');
+
+  // Cycle topics to fill all rounds, preserving difficulty per entry
+  const topicSequence: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[] = [];
+  for (let i = 0; i < totalRounds; i++) {
+    topicSequence.push(topics[i % topics.length]);
+  }
+
+  // BUG FIX 1: Generate questions SEQUENTIALLY so each call sees all previously
+  // asked questions for deduplication. Promise.all was a race — all calls fired
+  // with an empty askedQuestions array simultaneously, making dedup useless and
+  // causing repeated/identical questions.
+  //
+  // BUG FIX 2: Pass MAX_RETRIES explicitly instead of undefined. The 4th param
+  // to generateQuestion is `retries` (defaults to MAX_RETRIES=2). Passing
+  // `undefined` explicitly overrides the default, causing `retries > 0` to
+  // always be false — meaning any single parse/validation failure immediately
+  // fell through to the 3-question static fallback pool (causing the "same
+  // questions" symptom).
+  const askedQuestions: string[] = [];
+  const results: (Question & { topic: string })[] = [];
+
+  for (let idx = 0; idx < topicSequence.length; idx++) {
+    const entry = topicSequence[idx];
+    // Small stagger between requests to avoid hammering the provider
+    if (idx > 0) await new Promise(r => setTimeout(r, 120));
+    const question = await generateQuestion(
+      entry.topic,
+      [],
+      roomId,
+      MAX_RETRIES,           // BUG FIX 2: explicit retries (was undefined, breaking retries)
+      entry.difficulty,
+      [...askedQuestions],   // snapshot so recursive retries inside generateQuestion don't mutate our list
+      regionContext,
+    );
+    askedQuestions.push(question.text);
+    results.push({ ...question, topic: question.canonicalTopic || entry.topic });
+  }
+
+  return results;
 }

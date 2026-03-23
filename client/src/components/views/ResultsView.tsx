@@ -4,7 +4,7 @@ import { Avatar } from "../Avatar";
 import { motion } from "framer-motion";
 import React, { useEffect, useRef, useState } from "react";
 import { useAudioSystem } from "@/hooks/use-audio";
-import { Trophy, XCircle, CheckCircle2, Zap, Flame, Clock } from "lucide-react";
+import { Trophy, XCircle, CheckCircle2, Zap, Flame, Clock, Eye, Lightbulb } from "lucide-react";
 
 interface Props {
   room: Room;
@@ -15,6 +15,8 @@ export function ResultsView({ room, me }: Props) {
   const { playSound } = useAudioSystem();
   const soundPlayedRef = useRef(false);
   const playSoundRef   = useRef(playSound);
+  // Keep ref in sync so tick/sound callbacks never hold a stale function
+  useEffect(() => { playSoundRef.current = playSound; });
 
   const lastAnswerCorrectRef = useRef(me.lastAnswerCorrect);
   useEffect(() => {
@@ -31,8 +33,8 @@ export function ResultsView({ room, me }: Props) {
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({ width: "100%" });
 
   useEffect(() => {
-    // Fix #8 — use setInterval polling instead of rAF so the bar keeps
-    // ticking correctly when the tab is backgrounded on iOS/Android.
+    // Use setInterval polling so the bar keeps ticking correctly
+    // when the tab is backgrounded on iOS/Android.
     if (!room.resultsDeadline) return;
     const deadline = room.resultsDeadline;
 
@@ -104,7 +106,7 @@ export function ResultsView({ room, me }: Props) {
               : resultState === "timedout"
                 ? <><Clock className="w-5 h-5 text-yellow-400 shrink-0" />TIMED OUT</>
                 : resultState === "observer"
-                  ? <><span className="text-lg shrink-0">👀</span>JOINED MID-ROUND</>
+                  ? <><Eye className="w-5 h-5 text-white/60 shrink-0" />JOINED MID-ROUND</>
                   : <><XCircle className="w-5 h-5 text-destructive shrink-0" />WRONG</>
             }
           </h2>
@@ -301,6 +303,33 @@ function PodiumPanel({ sortedPlayers, me }: { sortedPlayers: Player[]; me: Playe
   );
 }
 
+// ── Expandable explanation block ─────────────────────────────────────────────
+
+function ExplanationBlock({ explanation }: { explanation: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = explanation.length > 160;
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 0.45 }}
+      className="mt-2 p-2 md:p-2.5 rounded-xl cursor-pointer select-none"
+      style={{ background: "#7c3aed12", border: "1px solid #7c3aed30" }}
+      onClick={() => isLong && setExpanded(e => !e)}
+    >
+      <p className={`text-white/70 text-[10px] md:text-xs leading-relaxed flex gap-1.5 ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+        <Lightbulb className="w-3 h-3 text-yellow-400 shrink-0 mt-px" />
+        {explanation}
+      </p>
+      {isLong && (
+        <p className="text-primary/60 text-[9px] mt-1 font-medium">
+          {expanded ? '▲ Show less' : '▼ Tap to read more'}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
 // ── Answer breakdown panel ────────────────────────────────────────────────────
 
 function AnswerPanel({ q, room, me }: { q: NonNullable<Room["currentQuestion"]>; room: Room; me: Player }) {
@@ -411,30 +440,8 @@ function AnswerPanel({ q, room, me }: { q: NonNullable<Room["currentQuestion"]>;
         })}
       </div>
 
-      {/* Fix #10 — Explanation: expandable, no truncation by default */}
-      {(() => {
-        const [expanded, setExpanded] = React.useState(false);
-        const isLong = q.explanation.length > 160;
-        return (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.45 }}
-            className="mt-2 p-2 md:p-2.5 rounded-xl cursor-pointer select-none"
-            style={{ background: "#7c3aed12", border: "1px solid #7c3aed30" }}
-            onClick={() => isLong && setExpanded(e => !e)}
-          >
-            <p className={`text-white/70 text-[10px] md:text-xs leading-relaxed ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
-              💡 {q.explanation}
-            </p>
-            {isLong && (
-              <p className="text-primary/60 text-[9px] mt-1 font-medium">
-                {expanded ? '▲ Show less' : '▼ Tap to read more'}
-              </p>
-            )}
-          </motion.div>
-        );
-      })()}
+      {/* Explanation: expandable, no truncation by default */}
+      <ExplanationBlock explanation={q.explanation} />
     </Card>
   );
 }

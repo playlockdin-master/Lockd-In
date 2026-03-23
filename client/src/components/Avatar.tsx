@@ -778,6 +778,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
       {/* Crown — leaderboard #1 */}
       {isLeader && (
         <div
+          data-flooq-avatar
           style={{
             position: "absolute",
             top: 0,
@@ -810,6 +811,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
           }}
         >
           <div
+            data-flooq-avatar
             style={{
               fontSize: size * 0.34,
               lineHeight: 1,
@@ -838,6 +840,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
 
       {/* Character SVG */}
       <div
+        data-flooq-avatar
         style={{
           transform:
             mood === "wrong"   ? "rotate(-5deg) scale(0.94)"
@@ -851,14 +854,30 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
         <Char size={size} mood={mood} />
       </div>
 
-      {/* Keyframes injected once */}
-      <style>{`
-        @keyframes flooq-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(-4px)} }
-        @keyframes flooq-crown { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-3px)} }
-        @keyframes flooq-fire  { 0%{transform:scale(1) rotate(-4deg)} 100%{transform:scale(1.14) rotate(4deg)} }
-      `}</style>
     </div>
   );
+}
+
+// Inject Avatar keyframes exactly once into the document <head>.
+// Doing it per-instance (inside JSX) created hundreds of duplicate <style> tags
+// which broke animation in some browsers and caused icons/crown/fire to go missing.
+// We also gate the animations behind prefers-reduced-motion here so the inline
+// style override in Avatar respects the user's OS motion setting.
+if (typeof document !== "undefined") {
+  const STYLE_ID = "flooq-avatar-keyframes";
+  if (!document.getElementById(STYLE_ID)) {
+    const s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = `
+      @keyframes flooq-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(-4px)} }
+      @keyframes flooq-crown { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-3px)} }
+      @keyframes flooq-fire  { 0%{transform:scale(1) rotate(-4deg)} 100%{transform:scale(1.14) rotate(4deg)} }
+      @media (prefers-reduced-motion: reduce) {
+        [data-flooq-avatar] { animation: none !important; }
+      }
+    `;
+    document.head.appendChild(s);
+  }
 }
 
 // ── Avatar Picker Grid ────────────────────────────────────────────────────────

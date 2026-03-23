@@ -156,13 +156,13 @@ export interface Question {
   canonicalTopic?: string; // AI-normalised topic label (e.g. "ch3ss" → "Chess")
 }
 
-export type GameStateStatus = 'lobby' | 'topic_selection' | 'question' | 'results' | 'ended';
+export type GameStateStatus = 'lobby' | 'topic_selection' | 'question' | 'results' | 'ended' | 'generating';
 
 // Shared timer durations — defaults and limits
 export const TOPIC_TIME_SECONDS = 25;
-export const QUESTION_TIME_SECONDS = 18;
+export const QUESTION_TIME_SECONDS = 25;
 
-export const TOPIC_TIME_MIN = 25;
+export const TOPIC_TIME_MIN = 15;
 export const TOPIC_TIME_MAX = 60;
 export const QUESTION_TIME_MIN = 15;
 export const QUESTION_TIME_MAX = 60;
@@ -187,6 +187,7 @@ export interface Room {
   players: Player[];
   status: GameStateStatus;
   mode: 'round' | 'score';
+  topicMode: 'live' | 'preset'; // 'live' = players type topic each round, 'preset' = topics submitted upfront
   target: number; // e.g. 10 or 20 for round mode, 1000 or 2000 for score mode
   topicTimeSecs: number;    // host-configured topic selection timer (25–60s)
   questionTimeSecs: number; // host-configured answer timer (15–60s)
@@ -204,6 +205,9 @@ export interface Room {
   playAgainIds?: string[]; // players who pressed Play Again during 'ended' state
   viewingResultsIds?: string[]; // players still on podium screen, haven't clicked play again
   askedQuestions?: string[]; // fingerprints of questions asked this game — used for deduplication
+  // Preset mode fields
+  presetTopics?: Record<string, { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]>; // playerId → topics submitted with difficulty
+  pregeneratedQuestions?: (Question & { topic: string })[]; // all pre-generated questions for preset mode
   // Region system — controls cultural context injected into AI question generation
   regionMode?: RegionMode;    // 'global' (no bias) | 'regional' (biased to region)
   regionId?: RegionId;        // which region (only when regionMode === 'regional')

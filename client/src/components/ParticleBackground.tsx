@@ -16,6 +16,12 @@ export function ParticleBackground() {
   const [particles, setParticles] = useState<Particle[]>([]);
 
   useEffect(() => {
+    // Bug 4 fix: skip particles entirely when the user (or OS low-power mode) requests
+    // reduced motion. On iOS, Low Power Mode automatically sets prefers-reduced-motion,
+    // so this also prevents thermal throttling on battery-constrained devices.
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) return; // leave particles empty — no CSS animations at all
+
     const isMobile = window.innerWidth < 768;
     // Fewer particles on mobile for perf, none on very small screens
     const count = isMobile ? 8 : 20;
