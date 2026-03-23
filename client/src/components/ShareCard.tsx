@@ -334,69 +334,6 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
   };
 
   const svgToBlob = (): Blob => {
-<<<<<<< HEAD
-=======
-    const svgStr = buildShareSvg();
-    return new Blob([svgStr], { type: 'image/svg+xml' });
-  };
-
-  const svgToPngBlob = async (): Promise<Blob> => {
-    const svgStr = buildShareSvg();
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width  = img.naturalWidth  || 380;
-        canvas.height = img.naturalHeight || 300;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-        canvas.toBlob(blob => {
-          if (blob) resolve(blob);
-          else reject(new Error('Canvas toBlob failed'));
-        }, 'image/png');
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG load failed')); };
-      img.src = url;
-    });
-  };
-
-  const handleCopyImage = async () => {
-    try {
-      // Try PNG copy first (supported in Chrome/Edge)
-      if (typeof ClipboardItem !== 'undefined') {
-        const pngBlob = await svgToPngBlob();
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-        return;
-      }
-    } catch { /* fallthrough */ }
-    // Fallback: copy share text
-    try {
-      await navigator.clipboard.writeText(shareText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch { /* silent fail */ }
-  };
-
-  const handleDownload = () => {
-    const blob = svgToBlob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `flooq-result.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleShare = async () => {
-    // On mobile with Web Share API — try sharing the SVG file directly
->>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
     const svgStr = buildShareSvg();
     return new Blob([svgStr], { type: 'image/svg+xml' });
   };

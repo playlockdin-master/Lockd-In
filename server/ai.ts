@@ -884,7 +884,6 @@ export async function generateQuestionsForPresetMode(
     topicSequence.push(topics[i % topics.length]);
   }
 
-<<<<<<< HEAD
   // BUG FIX 1: Generate questions SEQUENTIALLY so each call sees all previously
   // asked questions for deduplication. Promise.all was a race — all calls fired
   // with an empty askedQuestions array simultaneously, making dedup useless and
@@ -915,26 +914,6 @@ export async function generateQuestionsForPresetMode(
     askedQuestions.push(question.text);
     results.push({ ...question, topic: question.canonicalTopic || entry.topic });
   }
-=======
-  // Generate all questions in parallel, each with its specified difficulty
-  const askedQuestions: string[] = [];
-  const results = await Promise.all(
-    topicSequence.map(async (entry, idx) => {
-      if (idx > 0) await new Promise(r => setTimeout(r, idx * 80));
-      const question = await generateQuestion(
-        entry.topic,
-        [],
-        roomId,
-        undefined,
-        entry.difficulty,
-        askedQuestions,
-        regionContext,
-      );
-      askedQuestions.push(question.text);
-      return { ...question, topic: question.canonicalTopic || entry.topic };
-    })
-  );
->>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
 
   return results;
 }
