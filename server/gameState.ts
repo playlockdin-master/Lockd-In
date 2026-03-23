@@ -521,6 +521,7 @@ export function setupGameSockets(io: Server) {
       });
 
       if (room.topicMode === 'preset') {
+<<<<<<< HEAD
         // BUG FIX 4: Check host submission first with the correct sentinel.
         // presetTopics[id] === undefined  →  never submitted (waiting)
         // presetTopics[id] === []         →  explicitly skipped (0 topics)
@@ -532,6 +533,14 @@ export function setupGameSockets(io: Server) {
         const hostSubmittedEmpty = Array.isArray(hostSubmission) && hostSubmission.length === 0;
 
         if (hostNeverSubmitted || hostSubmittedEmpty) {
+=======
+        // Collect all submitted topics — {topic, difficulty} objects
+        const allTopicEntries = Object.values(room.presetTopics ?? {}).flat();
+        // Host must have submitted topics; others are optional
+        const host = room.players.find(p => p.isHost);
+        const hostTopics = host ? (room.presetTopics?.[host.id] ?? []) : [];
+        if (hostTopics.length === 0) {
+>>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
           socket.emit('error', { message: 'Host must submit at least 1 topic before starting.' });
           room.status = 'lobby';
           room.currentRound = 0;
@@ -539,9 +548,14 @@ export function setupGameSockets(io: Server) {
           io.to(room.code).emit('gameState', serializeRoom(room));
           return;
         }
+<<<<<<< HEAD
 
         // Check all non-host players have either submitted OR explicitly passed (submitted empty array)
         const playersNotYetSubmitted = room.players.filter(p => (room.presetTopics ?? {})[p.id] === undefined);
+=======
+        // Check all players have either submitted OR explicitly passed (submitted empty)
+        const playersNotYetSubmitted = room.players.filter(p => room.presetTopics?.[p.id] === undefined);
+>>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
         if (playersNotYetSubmitted.length > 0) {
           const names = playersNotYetSubmitted.map(p => p.name).join(', ');
           socket.emit('error', { message: `Still waiting for: ${names} (they can submit 0 topics to skip)` });
@@ -551,9 +565,12 @@ export function setupGameSockets(io: Server) {
           io.to(room.code).emit('gameState', serializeRoom(room));
           return;
         }
+<<<<<<< HEAD
 
         // Collect all submitted topics — {topic, difficulty} objects
         const allTopicEntries = Object.values(room.presetTopics ?? {}).flat();
+=======
+>>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
         startPresetMode(room, io, allTopicEntries);
       } else {
         startTopicSelection(room, io);
@@ -719,9 +736,13 @@ export function setupGameSockets(io: Server) {
       room.viewingResultsIds = [];
       room.presetTopics = {};
       room.pregeneratedQuestions = [];
+<<<<<<< HEAD
       // BUG FIX 5: Preserve topicMode — was hard-reset to 'live' here too,
       // forcing host to re-select preset mode every time they reset.
       // topicMode intentionally NOT reset here — keep the host's choice.
+=======
+      room.topicMode = 'live';
+>>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
       room.players.forEach((p) => {
         p.score = 0;
         p.streak = 0;
@@ -899,10 +920,14 @@ function resetRoomToLobby(room: Room, io: Server) {
   room.viewingResultsIds = [];
   room.presetTopics = {};
   room.pregeneratedQuestions = [];
+<<<<<<< HEAD
   // BUG FIX 5: Preserve topicMode so players who chose preset mode can play
   // again without having to re-select it. Previously hard-coded to 'live',
   // silently wiping the preset preference on every play-again cycle.
   // topicMode intentionally NOT reset here — keep the host's choice.
+=======
+  room.topicMode = 'live';
+>>>>>>> dcc5d0fb597db0e18b98574faddb7f07014fa659
   room.players.forEach((p) => {
     p.score = 0;
     p.streak = 0;
