@@ -24,7 +24,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
 
   const question = room.currentQuestion;
   const myRoomAnswer = room.answers[me.id];
-  const isLateJoiner = myRoomAnswer?.answerIndex === -1; // sentinel set by server
+  const isLateJoiner = myRoomAnswer?.answerIndex === -2; // -2 = joined mid-round (server sentinel); -1 = timed out
   const hasAnswered = isLateJoiner ? false : (selectedIdx !== null || myRoomAnswer !== undefined);
   const myAnswerIdx = isLateJoiner ? null : (selectedIdx ?? myRoomAnswer?.answerIndex ?? null);
   const revealAnswer = room.status === 'results';
@@ -322,7 +322,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
       <div className="flex flex-wrap gap-1.5 justify-center pb-1">
         {room.players.map(p => {
           const answered = room.answers[p.id] !== undefined && room.answers[p.id].answerIndex >= 0;
-          const isObserver = room.answers[p.id]?.answerIndex === -1;
+          const isObserver = room.answers[p.id]?.answerIndex === -2; // -2 = late joiner sentinel
           return (
             <motion.div
               key={p.id}

@@ -591,6 +591,7 @@ export function setupGameSockets(io: Server) {
 
     // ── updateTopicMode ───────────────────────────────────────────────────────
     socket.on("updateTopicMode", ({ topicMode }) => {
+      if (isRateLimited(socket.id, 'updateTopicMode')) return;
       const room   = getRoomBySocketId(socket.id);
       const player = getPlayerBySocketId(socket.id);
       if (!room || !player || !player.isHost || room.status !== 'lobby') return;
@@ -645,9 +646,9 @@ export function setupGameSockets(io: Server) {
 
       io.to(room.code).emit("gameState", serializeRoom(room));
 
-      // Auto-transition when all CONNECTED players have voted
+      // Auto-transition when all CONNECTED players have voted (require at least 2)
       const connected = room.players.filter(p => p.isConnected);
-      if (connected.length >= 1 && connected.every(p => room.playAgainIds!.includes(p.id))) {
+      if (connected.length >= 2 && connected.every(p => room.playAgainIds!.includes(p.id))) {
         resetRoomToLobby(room, io);
       }
     });
