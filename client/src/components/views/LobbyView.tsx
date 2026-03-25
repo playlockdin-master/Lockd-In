@@ -233,7 +233,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                         {p.name}
                         {p.isHost && <Crown className="w-4 h-4 text-yellow-400" />}
                         {p.id === me.id && <span className="text-xs bg-white/20 px-2 py-0.5 rounded text-white/70">You</span>}
-                        {p.isReconnecting && <span className="text-[10px] text-yellow-400/70 font-normal italic animate-pulse">reconnecting…</span>}
+                        {!p.isConnected && <span className="text-[10px] text-yellow-400/70 font-normal italic animate-pulse">reconnecting…</span>}
                         {isViewingResults && <span className="text-[10px] text-white/30 font-normal italic">viewing results…</span>}
                       </span>
                     </div>

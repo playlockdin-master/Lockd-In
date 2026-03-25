@@ -48,7 +48,10 @@ function loadIdentity(): { name: string; avatarId: string } | null {
 function clearIdentity() {
   sessionStorage.removeItem('playerName');
   sessionStorage.removeItem('avatarId');
-  try { localStorage.removeItem('flooq_identity'); } catch {}
+  try {
+    localStorage.removeItem('flooq_identity');
+    localStorage.removeItem('flooq_player_id'); // permanent identity
+  } catch {}
 }
 
 // ── Nickname modal shown when arriving via a shared link ──────────────────────
@@ -373,9 +376,9 @@ export default function GameRoom() {
     <div className="relative flex flex-col overflow-x-hidden w-full" style={{ minHeight: '100dvh' }}>
       {showSplash && <RoomSplash onDone={handleSplashDone} />}
 
-      {/* Reconnecting banner — shown when socket drops mid-game */}
+      {/* Reconnecting banner — shown when our socket drops mid-game */}
       <AnimatePresence>
-        {isReconnecting && room && (
+        {(isReconnecting || (room && me && !me.isConnected)) && room && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}

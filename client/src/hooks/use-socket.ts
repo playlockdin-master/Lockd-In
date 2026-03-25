@@ -4,16 +4,32 @@ import { Room, Player, type RegionId } from '@shared/schema';
 
 // ---------------------------------------------------------------------------
 // ANALYTICS HELPER
-// Typed wrapper around window.gtag so we don't need an npm package.
-// Silently no-ops if gtag hasn't loaded yet (e.g. ad blockers).
 // ---------------------------------------------------------------------------
 function track(eventName: string, params?: Record<string, string | number | boolean>) {
   try {
     const g = (window as any).gtag;
     if (typeof g === 'function') g('event', eventName, params ?? {});
-  } catch {
-    // never let analytics crash the game
-  }
+  } catch { /* never let analytics crash the game */ }
+}
+
+// ---------------------------------------------------------------------------
+// PERMANENT PLAYER IDENTITY
+// The server assigns each player a UUID (playerId) that is independent of
+// their socket.id. We persist it in localStorage so it survives tab closes,
+// refreshes, and network drops. On reconnect we send it back so the server
+// can match us to our existing player slot without relying on name alone.
+// ---------------------------------------------------------------------------
+const PLAYER_ID_KEY   = 'flooq_player_id';
+const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function loadStoredPlayerId(): string | null {
+  try { return localStorage.getItem(PLAYER_ID_KEY); } catch { return null; }
+}
+function saveStoredPlayerId(id: string) {
+  try { localStorage.setItem(PLAYER_ID_KEY, id); } catch {}
+}
+function clearStoredPlayerId() {
+  try { localStorage.removeItem(PLAYER_ID_KEY); } catch {}
 }
 
 export interface TopicStat {
@@ -25,6 +41,7 @@ export interface TopicStat {
 export interface GameState {
   room: Room | null;
   me: Player | null;
+  myPlayerId: string | null;   // permanent player identity (UUID)
   isConnected: boolean;
   error: string | null;
   serverRestarted: boolean;
@@ -35,86 +52,87 @@ export interface GameState {
   topicRejection: { badTopic: string; reason: string; newTopic: string } | null;
   topicSuggestions: string[];
   loadingSuggestions: boolean;
-  topicStats: TopicStat[]; // per-topic accuracy for current player
-  bestStreak: number;      // highest streak reached this game
+  topicStats: TopicStat[];
+  bestStreak: number;
 }
 
 export function useSocket() {
   const [gameState, setGameState] = useState<GameState>({
-    room: null,
-    me: null,
-    isConnected: false,
-    error: null,
-    serverRestarted: false,
-    roomExpired: false,
-    isReconnecting: false,
-    wasKicked: false,
-    kickMessage: null,
-    topicRejection: null,
+    room:             null,
+    me:               null,
+    myPlayerId:       loadStoredPlayerId(),
+    isConnected:      false,
+    error:            null,
+    serverRestarted:  false,
+    roomExpired:      false,
+    isReconnecting:   false,
+    wasKicked:        false,
+    kickMessage:      null,
+    topicRejection:   null,
     topicSuggestions: [],
     loadingSuggestions: false,
-    topicStats: [],
-    bestStreak: 0,
+    topicStats:       [],
+    bestStreak:       0,
   });
-  
+
   const [connectTimeout, setConnectTimeout] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
-  // Track whether this is a reconnect (socket already had a previous connection)
+  const socketRef            = useRef<Socket | null>(null);
   const hasConnectedBeforeRef = useRef(false);
-  // Use a ref instead of reading stale closure state
-  const isConnectedRef = useRef(false);
+  const isConnectedRef        = useRef(false);
+  // Current permanent playerId — updated whenever server sends playerIdentity
+  const myPlayerIdRef         = useRef<string | null>(loadStoredPlayerId());
 
   useEffect(() => {
-    // If still not connected after 8 seconds, show an error
     const timer = setTimeout(() => {
       if (!isConnectedRef.current) setConnectTimeout(true);
     }, 8000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Stable ref so the socket closure can call clearIdentity without stale capture
   const clearIdentityRef = useRef<() => void>(() => {});
-
   useEffect(() => {
-    // Keep ref in sync
     clearIdentityRef.current = () => {
       sessionStorage.removeItem('playerName');
       sessionStorage.removeItem('avatarId');
+      clearStoredPlayerId();
       try { localStorage.removeItem('flooq_identity'); } catch {}
     };
   });
 
   useEffect(() => {
     const clearIdentity_socket = () => clearIdentityRef.current();
+
     const newSocket = io({
-      reconnectionAttempts: 10,       // more attempts for mobile network switches
-      reconnectionDelay: 500,         // start retrying faster (was 1000ms)
-      reconnectionDelayMax: 3000,     // cap backoff at 3s instead of default 5s
-      timeout: 10000,                 // connection timeout
+      reconnectionAttempts: 10,
+      reconnectionDelay:    500,
+      reconnectionDelayMax: 3000,
+      timeout:              10000,
     });
-    
+
     socketRef.current = newSocket;
 
     newSocket.on('connect', () => {
       const isReconnect = hasConnectedBeforeRef.current;
       hasConnectedBeforeRef.current = true;
-      isConnectedRef.current = true;
+      isConnectedRef.current        = true;
 
       setGameState(prev => ({ ...prev, isConnected: true, isReconnecting: false, error: null }));
 
-      // On reconnect, re-join the room so the server re-registers the new socket ID.
-      // We only do this if we were already in a room — GameRoom's own useEffect handles
-      // the initial join.
+      // On socket reconnect, re-join with our stored permanent playerId so the
+      // server matches us to our existing player slot.
       if (isReconnect) {
         const playerName = sessionStorage.getItem('playerName');
         const avatarId   = sessionStorage.getItem('avatarId') ?? 'ghost';
-        const match = window.location.pathname.match(/\/room\/([A-Z0-9]+)/i);
-        const roomCode = match?.[1];
-        // Don't re-join if the player was kicked (identity already cleared,
-        // URL already replaced with '/' — but guard here too for safety)
-        const wasKickedAlready = !playerName;
-        if (playerName && roomCode && roomCode.toLowerCase() !== 'new' && !wasKickedAlready) {
-          newSocket.emit('joinRoom', { playerName, roomCode: roomCode.toUpperCase(), avatarId });
+        const match      = window.location.pathname.match(/\/room\/([A-Z0-9]+)/i);
+        const roomCode   = match?.[1];
+        const wasKicked  = !playerName;
+        if (playerName && roomCode && roomCode.toLowerCase() !== 'new' && !wasKicked) {
+          newSocket.emit('joinRoom', {
+            playerName,
+            roomCode: roomCode.toUpperCase(),
+            avatarId,
+            playerId: myPlayerIdRef.current ?? undefined, // send back our permanent id
+          });
         }
       }
     });
@@ -124,9 +142,17 @@ export function useSocket() {
       setGameState(prev => ({ ...prev, isConnected: false, isReconnecting: true }));
     });
 
+    // Server assigns us a permanent playerId on every successful join.
+    // We store it and use it for all subsequent reconnects.
+    newSocket.on('playerIdentity', ({ playerId }: { playerId: string }) => {
+      if (playerId) {
+        myPlayerIdRef.current = playerId;
+        saveStoredPlayerId(playerId);
+        setGameState(prev => ({ ...prev, myPlayerId: playerId }));
+      }
+    });
+
     newSocket.on('error', (data: { message: string }) => {
-      // On reconnect, if the server says the room doesn't exist it almost certainly
-      // restarted and lost state. Show a friendlier message than the generic error.
       const isReconnectRoomMissing =
         hasConnectedBeforeRef.current &&
         data.message?.toLowerCase().includes('no room with that code');
@@ -139,52 +165,48 @@ export function useSocket() {
 
     newSocket.on('gameState', (roomData: Room) => {
       setGameState(prev => {
-        // PRIMARY FIX: me is derived by matching socket.id — but during the reconnect
-        // window the server still has the player stored under their OLD socket ID
-        // (isReconnecting=true), while newSocket.id is already the NEW socket ID.
-        // This causes `me` to be null for 1–2 gameState ticks, making GameRoom render
-        // the blank "Entering Room..." spinner for the reconnecting player.
-        //
-        // Fix: if the id-based lookup misses, fall back to name-based lookup using the
-        // stored identity. We only do this when room is non-null (we were in a game),
-        // and only when the candidate player is flagged isReconnecting — meaning the
-        // server itself knows this is a mid-reconnect state, not a name collision.
-        let me = roomData.players.find(p => p.id === newSocket.id) || null;
-        if (!me && prev.room) {
+        // Resolve "me" by permanent playerId first (reliable across reconnects),
+        // then fall back to name match for legacy compatibility.
+        const pid = myPlayerIdRef.current;
+        let me: Player | null = null;
+
+        if (pid) {
+          me = roomData.players.find(p => p.id === pid) ?? null;
+        }
+        // Fallback: match by stored name (handles edge case where server has
+        // not yet sent playerIdentity for this connection)
+        if (!me) {
           const storedName = sessionStorage.getItem('playerName');
           if (storedName) {
-            const candidate = roomData.players.find(
-              p => p.name.toLowerCase() === storedName.toLowerCase() && p.isReconnecting
-            );
-            if (candidate) me = candidate;
+            me = roomData.players.find(
+              p => p.name.toLowerCase() === storedName.toLowerCase()
+            ) ?? null;
+            // If we found ourselves by name, also update myPlayerIdRef
+            if (me && me.id && me.id !== pid) {
+              myPlayerIdRef.current = me.id;
+              saveStoredPlayerId(me.id);
+            }
           }
         }
-        const topicRejection = roomData.currentQuestion ? null : prev.topicRejection;
-        const isNewTopicSelection =
-          roomData.status === 'topic_selection' && prev.room?.status !== 'topic_selection';
-        const topicSuggestions = isNewTopicSelection ? [] : prev.topicSuggestions;
-        const loadingSuggestions = isNewTopicSelection ? false : prev.loadingSuggestions;
 
-        // ── Analytics: fire events on meaningful state transitions ──────────
+        const topicRejection    = roomData.currentQuestion ? null : prev.topicRejection;
+        const isNewTopicSel     = roomData.status === 'topic_selection' && prev.room?.status !== 'topic_selection';
+        const topicSuggestions  = isNewTopicSel ? [] : prev.topicSuggestions;
+        const loadingSuggestions = isNewTopicSel ? false : prev.loadingSuggestions;
+
+        // Analytics
         const prevStatus = prev.room?.status;
         const nextStatus = roomData.status;
 
         if (prevStatus !== 'question' && nextStatus === 'question' && roomData.currentTopic) {
-          // A new question arrived — track round start
-          track('round_started', {
-            topic: roomData.currentTopic,
-            round: roomData.currentRound,
-            players: roomData.players.length,
-          });
+          track('round_started', { topic: roomData.currentTopic, round: roomData.currentRound, players: roomData.players.length });
         }
 
-        // ── Per-topic accuracy tracking ──────────────────────────────────────
-        // When status transitions FROM 'question' TO 'results', the round just ended.
-        // At this point me.lastAnswerCorrect reflects this round's result.
+        // Per-topic accuracy tracking
         let topicStats = prev.topicStats;
         let bestStreak = prev.bestStreak;
         if (prevStatus === 'question' && nextStatus === 'results' && roomData.currentTopic && me) {
-          const topic = roomData.currentTopic;
+          const topic      = roomData.currentTopic;
           const wasCorrect = me.lastAnswerCorrect === true;
           const answered   = me.lastAnswerCorrect !== undefined;
           const existing   = topicStats.find(s => s.topic === topic);
@@ -200,24 +222,12 @@ export function useSocket() {
           bestStreak = Math.max(bestStreak, me.streak);
         }
 
-        // Reset stats on new game (lobby after ended)
-        if (prevStatus === 'ended' && nextStatus === 'lobby') {
-          topicStats = [];
-          bestStreak = 0;
-        }
+        if (prevStatus === 'ended' && nextStatus === 'lobby') { topicStats = []; bestStreak = 0; }
 
         if (prevStatus !== 'ended' && nextStatus === 'ended') {
-          // Game finished — most important event
-          track('game_completed', {
-            rounds_played: roomData.currentRound,
-            players: roomData.players.length,
-            mode: roomData.mode,
-            target: roomData.target,
-          });
+          track('game_completed', { rounds_played: roomData.currentRound, players: roomData.players.length, mode: roomData.mode, target: roomData.target });
         }
-
         if (prevStatus !== 'lobby' && nextStatus === 'lobby' && prev.room?.status === 'ended') {
-          // Players chose to play again
           track('play_again', { players: roomData.players.length });
         }
 
@@ -233,111 +243,94 @@ export function useSocket() {
       setGameState(prev => ({ ...prev, topicSuggestions: data.suggestions, loadingSuggestions: false }));
     });
 
-    // Server warns 30s before deleting an ended room
     newSocket.on('roomExpired', () => {
       setGameState(prev => ({ ...prev, roomExpired: true }));
     });
 
-    // Server kicked this player — clear identity and surface the kicked screen
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
-      // Do NOT replace URL here — wouter reads the URL to decide which
-      // component renders. Replacing to '/' immediately unmounts GameRoom
-      // before the kicked screen can show. The redirect happens when the
-      // player clicks "Back to Home" in the wasKicked screen.
       setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
     });
 
-    newSocket.on('reaction', (data: { playerId: string, emoji: string }) => {
-      const event = new CustomEvent('player-reaction', { detail: data });
-      window.dispatchEvent(event);
+    newSocket.on('reaction', (data: { playerId: string; emoji: string }) => {
+      window.dispatchEvent(new CustomEvent('player-reaction', { detail: data }));
     });
 
-    return () => {
-      newSocket.disconnect();
-    };
+    return () => { newSocket.disconnect(); };
   }, []);
 
-  const updateSettings = useCallback((mode: 'round' | 'score', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('updateSettings', { mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode });
-  }, []);
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const joinRoom = useCallback((playerName: string, roomCode?: string, avatarId?: string) => {
     if (!socketRef.current) return;
-    track('join_room', { is_new_room: !roomCode || roomCode === 'new' ? true : false });
-    socketRef.current.emit('joinRoom', { playerName, roomCode, avatarId: avatarId ?? 'ghost' });
+    track('join_room', { is_new_room: !roomCode || roomCode === 'new' });
+    socketRef.current.emit('joinRoom', {
+      playerName,
+      roomCode,
+      avatarId: avatarId ?? 'ghost',
+      playerId: myPlayerIdRef.current ?? undefined, // send permanent id if we have one
+    });
+  }, []);
+
+  const updateSettings = useCallback((mode: 'round' | 'score', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
+    socketRef.current?.emit('updateSettings', { mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode });
   }, []);
 
   const setReady = useCallback((isReady: boolean) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('setReady', { isReady });
+    socketRef.current?.emit('setReady', { isReady });
   }, []);
 
   const startGame = useCallback((mode: 'round' | 'score', target: number, topicTimeSecs?: number, questionTimeSecs?: number, regionMode?: 'global' | 'regional', regionId?: RegionId, countryCode?: string) => {
-    if (!socketRef.current) return;
     track('game_started', { mode, target });
-    socketRef.current.emit('startGame', { mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode });
+    socketRef.current?.emit('startGame', { mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode });
   }, []);
 
   const selectTopic = useCallback((topic: string, difficulty?: 'Easy' | 'Medium' | 'Hard') => {
-    if (!socketRef.current) return;
     track('topic_selected', { topic, ...(difficulty ? { difficulty } : {}) });
-    socketRef.current.emit('selectTopic', { topic, ...(difficulty ? { difficulty } : {}) });
+    socketRef.current?.emit('selectTopic', { topic, ...(difficulty ? { difficulty } : {}) });
   }, []);
 
   const updateTopicMode = useCallback((topicMode: 'live' | 'preset') => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('updateTopicMode', { topicMode });
+    socketRef.current?.emit('updateTopicMode', { topicMode });
   }, []);
 
   const submitPresetTopics = useCallback((topics: { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('submitPresetTopics', { topics });
+    socketRef.current?.emit('submitPresetTopics', { topics });
   }, []);
 
   const submitAnswer = useCallback((answerIndex: number) => {
-    if (!socketRef.current) return;
     track('answer_submitted');
-    socketRef.current.emit('submitAnswer', { answerIndex });
+    socketRef.current?.emit('submitAnswer', { answerIndex });
   }, []);
 
   const sendReaction = useCallback((emoji: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('react', { emoji });
+    socketRef.current?.emit('react', { emoji });
   }, []);
 
   const updateAvatar = useCallback((avatarId: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('updateAvatar', { avatarId });
+    socketRef.current?.emit('updateAvatar', { avatarId });
   }, []);
 
   const leaveRoom = useCallback(() => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('leaveRoom');
+    socketRef.current?.emit('leaveRoom');
   }, []);
 
-  // Host kick — emit to server
   const kickPlayer = useCallback((targetId: string) => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('kickPlayer', { targetId });
+    socketRef.current?.emit('kickPlayer', { targetId });
   }, []);
 
   const resetGame = useCallback(() => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('resetGame');
+    socketRef.current?.emit('resetGame');
   }, []);
 
   const playAgain = useCallback(() => {
-    if (!socketRef.current) return;
-    socketRef.current.emit('playAgain');
+    socketRef.current?.emit('playAgain');
   }, []);
 
   const clearError = useCallback(() => {
     setGameState(prev => ({ ...prev, error: null }));
   }, []);
 
-  // Allow UI to dismiss error/modal states
   const clearWasKicked = useCallback(() => {
     setGameState(prev => ({ ...prev, wasKicked: false, kickMessage: null }));
   }, []);

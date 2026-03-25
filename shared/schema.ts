@@ -168,18 +168,21 @@ export const QUESTION_TIME_MIN = 15;
 export const QUESTION_TIME_MAX = 60;
 
 export interface Player {
-  id: string; // socket id
+  id: string;         // permanent player identity (UUID, generated once at first join)
+  socketId: string;   // current live socket — changes on every reconnect
   name: string;
   avatarId: string; // character id e.g. "ghost" | "gremlin" | ...
   score: number;
   streak: number;
   isReady: boolean;
   isHost: boolean;
+  isConnected: boolean; // true = has an active socket right now
   lastAnswer?: number;
   lastAnswerCorrect?: boolean | null; // true = correct, false = wrong, null = timed out
   lastPoints?: number;
   reaction?: string;
-  isReconnecting?: boolean; // true during the 10s grace window after disconnect
+  /** @deprecated use isConnected instead — kept for schema compatibility during transition */
+  isReconnecting?: boolean;
 }
 
 export interface Room {
@@ -195,18 +198,26 @@ export interface Room {
   usedTopics: string[];
   currentTopic?: string;
   currentQuestion?: Question;
-  topicSelectorId?: string; // Player ID whose turn it is
+  topicSelectorId?: string;  // permanent playerId whose turn it is
   topicDeadline?: number;
   questionDeadline?: number;
   resultsDeadline?: number;
-  answers: Record<string, { answerIndex: number, timeTaken: number }>; // playerId -> { answerIndex, timeTaken }
-  roundPlayerIds?: string[]; // IDs of players who were present when this round's question started — used to exclude late joiners
-  fastestPlayerId?: string; // ID of the player who answered correctly first
-  playAgainIds?: string[]; // players who pressed Play Again during 'ended' state
-  viewingResultsIds?: string[]; // players still on podium screen, haven't clicked play again
+  answers: Record<string, { answerIndex: number, timeTaken: number }>; // permanent playerId -> answer
+  /**
+   * Locked list of permanent playerIds who were present at question-start.
+   * This set NEVER changes during a question — disconnects/reconnects only
+   * update Player.isConnected. The timer runs to completion; at timeout
+   * any playerId in this set without an answer is auto-submitted as timed-out.
+   */
+  questionParticipants?: string[];
+  /** @deprecated alias kept for wire-compat — mirrors questionParticipants */
+  roundPlayerIds?: string[];
+  fastestPlayerId?: string; // permanent playerId of fastest correct answerer
+  playAgainIds?: string[];  // permanent playerIds who pressed Play Again
+  viewingResultsIds?: string[]; // permanent playerIds still on podium screen
   askedQuestions?: string[]; // fingerprints of questions asked this game — used for deduplication
   // Preset mode fields
-  presetTopics?: Record<string, { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]>; // playerId → topics submitted with difficulty
+  presetTopics?: Record<string, { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]>; // permanent playerId -> topics
   pregeneratedQuestions?: (Question & { topic: string })[]; // all pre-generated questions for preset mode
   // Region system — controls cultural context injected into AI question generation
   regionMode?: RegionMode;    // 'global' (no bias) | 'regional' (biased to region)

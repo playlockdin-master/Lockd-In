@@ -161,7 +161,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
           >
             <Avatar avatarId={p.avatarId ?? 'ghost'} size={20} mood="idle" />
             <span className="max-w-[56px] truncate">{p.id === me.id ? 'You' : p.name}</span>
-            {p.isReconnecting
+            {!p.isConnected
               ? <span className="text-[9px] text-yellow-400/80 animate-pulse">↺</span>
               : <span className="font-mono">{p.score}</span>
             }
