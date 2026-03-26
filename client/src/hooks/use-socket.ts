@@ -249,11 +249,7 @@ export function useSocket() {
 
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
-      // Store kick message for the home page to pick up, then redirect immediately
-      try { sessionStorage.setItem('flooq_kicked', data.message || 'The host removed you from the room.'); } catch {}
-      newSocket.disconnect();
-      window.history.replaceState(null, '', '/');
-      window.location.href = '/';
+      setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
     });
 
     newSocket.on('reaction', (data: { playerId: string; emoji: string }) => {

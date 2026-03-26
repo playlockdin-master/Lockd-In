@@ -245,13 +245,15 @@ export default function GameRoom() {
     );
   }
 
-  // Kicked handling is now done in use-socket.ts — player is immediately
-  // redirected to home with a sessionStorage flag for the kicked banner.
+  // Kicked by host — write message to sessionStorage then navigate to home.
+  // Home.tsx reads it on mount and shows the kicked banner.
   if (wasKicked) {
-    return createPortal(
-      <div style={{ display: 'none' }} />,
-      document.body
-    );
+    try {
+      sessionStorage.setItem('flooq_kicked', kickMessage || 'The host removed you from the room.');
+    } catch {}
+    window.history.replaceState(null, '', '/');
+    setLocation('/');
+    return null;
   }
 
   // Server restarted and wiped this room — friendlier than a generic error
