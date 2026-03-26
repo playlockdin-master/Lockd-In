@@ -249,7 +249,8 @@ export function useSocket() {
 
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
-      setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
+      const msg = encodeURIComponent(data.message || 'The host removed you from the room.');
+      window.location.replace('/kicked?reason=' + msg);
     });
 
     newSocket.on('reaction', (data: { playerId: string; emoji: string }) => {
