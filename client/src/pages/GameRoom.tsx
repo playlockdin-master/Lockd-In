@@ -245,43 +245,11 @@ export default function GameRoom() {
     );
   }
 
-  // Kicked by host — show as a portal overlay so GameRoom stays mounted
-  // (keeps URL at /room/XXXX during display), then replaces URL on dismiss
-  // so the player can't refresh back into the room.
+  // Kicked handling is now done in use-socket.ts — player is immediately
+  // redirected to home with a sessionStorage flag for the kicked banner.
   if (wasKicked) {
     return createPortal(
-      <div
-        style={{
-          position: 'fixed', inset: 0, zIndex: 200,
-          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-        }}
-      >
-        <motion.div
-          initial={{ scale: 0.85, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-          className="glass-panel p-8 rounded-3xl text-center max-w-md w-full"
-        >
-          <div className="text-5xl mb-4 flex justify-center"><Ban className="w-12 h-12 text-red-400" /></div>
-          <h2 className="text-2xl font-display font-bold text-white mb-3">You were removed</h2>
-          <p className="text-white/60 mb-6">
-            {kickMessage || 'The host removed you from the game.'}
-          </p>
-          <Button
-            className="w-full"
-            onClick={() => {
-              clearWasKicked();
-              // Replace URL NOW — after the player has seen the screen —
-              // so they can't refresh to rejoin. Then navigate home.
-              window.history.replaceState(null, '', '/');
-              setLocation('/');
-            }}
-          >
-            Back to Home
-          </Button>
-        </motion.div>
-      </div>,
+      <div style={{ display: 'none' }} />,
       document.body
     );
   }

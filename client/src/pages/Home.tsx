@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Card } from "@/components/Card";
 import { Input } from "@/components/Input";
@@ -6,8 +6,8 @@ import { Button } from "@/components/Button";
 import { ParticleBackground } from "@/components/ParticleBackground";
 import { AudioController } from "@/components/AudioController";
 import { AvatarPicker } from "@/components/Avatar";
-import { motion } from "framer-motion";
-import { Gamepad2, Hash, User } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Gamepad2, Hash, User, Ban } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 
@@ -18,6 +18,17 @@ export default function Home() {
   const [roomCode, setRoomCode] = useState("");
   const [nameError, setNameError] = useState("");
   const [codeError, setCodeError] = useState("");
+  const [kickedMessage, setKickedMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem('flooq_kicked');
+      if (msg) {
+        setKickedMessage(msg);
+        sessionStorage.removeItem('flooq_kicked');
+      }
+    } catch {}
+  }, []);
   const { playSound } = useAudioSystem();
 
   const handleAction = (action: 'create' | 'join') => {
@@ -59,6 +70,43 @@ export default function Home() {
       <div className="absolute top-4 right-4 z-50">
         <AudioController />
       </div>
+
+      {/* Kicked by host banner */}
+      <AnimatePresence>
+        {kickedMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 200,
+              background: 'rgba(0,0,0,0.80)', backdropFilter: 'blur(8px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 12 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+              className="glass-panel p-8 rounded-3xl text-center max-w-sm w-full"
+            >
+              <div className="flex justify-center mb-4">
+                <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center">
+                  <Ban className="w-8 h-8 text-red-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-display font-bold text-white mb-2">Kicked from room</h2>
+              <p className="text-white/55 text-sm mb-6 leading-relaxed">
+                {kickedMessage}
+              </p>
+              <Button className="w-full" onClick={() => setKickedMessage(null)}>
+                Back to Lobby
+              </Button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="relative z-10 w-full">
         {/* Logo */}
