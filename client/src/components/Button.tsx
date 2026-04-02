@@ -15,9 +15,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', isLoading, children, disabled, onClick, type, ...rest }, ref) => {
 
     const variants = {
-      primary: "bg-gradient-to-r from-primary to-purple-600 text-white shadow-lg shadow-primary/25 border border-primary/50 hover:shadow-primary/40",
-      secondary: "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/25 border border-blue-500/50 hover:shadow-blue-500/40",
-      outline: "glass-panel text-white hover:bg-white/10",
+      primary: "bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-lg shadow-teal-500/30 border border-teal-400/50 hover:shadow-teal-400/50 hover:from-teal-400 hover:to-cyan-400",
+      secondary: "bg-gradient-to-r from-teal-700/70 to-cyan-700/70 text-white shadow-lg shadow-teal-900/30 border border-teal-600/50 hover:shadow-teal-500/30 backdrop-blur-md",
+      outline: "glass-panel text-white hover:bg-white/10 border-teal-500/30 hover:border-teal-400/50",
       ghost: "bg-transparent text-white/70 hover:text-white hover:bg-white/10",
       danger: "bg-destructive/80 text-white backdrop-blur-md border border-destructive hover:bg-destructive shadow-lg shadow-destructive/20",
       success: "bg-success/80 text-white backdrop-blur-md border border-success hover:bg-success shadow-lg shadow-success/20",

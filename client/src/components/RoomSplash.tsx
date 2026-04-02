@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { FlooqLogo } from "./FlooqLogo";
+import { QotionLogo } from "./QotionLogo";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -27,7 +27,7 @@ export function RoomSplash({ onDone }: Props) {
           transition={{ duration: 0.35 }}
           className="fixed inset-0 z-[100] flex items-center justify-center"
           style={{
-            background: "radial-gradient(ellipse at center, rgba(109,40,217,0.25) 0%, rgba(7,7,14,0.98) 70%)",
+            background: "radial-gradient(ellipse at center, rgba(13,148,136,0.28) 0%, rgba(8,14,26,0.98) 70%)",
             backdropFilter: "blur(2px)",
             WebkitBackdropFilter: "blur(2px)",
           }}
@@ -54,7 +54,7 @@ export function RoomSplash({ onDone }: Props) {
               transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
               className="relative"
             >
-              <FlooqLogo size="xl" />
+              <QotionLogo size="xl" />
             </motion.div>
 
             <motion.p

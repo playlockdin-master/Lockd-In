@@ -3,31 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="theme-color" content="#0a1628" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Preload mascot images so they appear instantly with no pop-in -->
+    <link rel="preload" as="image" href="/mascot_wave.png" />
+    <link rel="preload" as="image" href="/mascot_waiting.png" />
+    <link rel="preload" as="image" href="/mascot_question.png" />
+    <link rel="preload" as="image" href="/mascot.png" />
+    <!-- Preload Qotion logo and icon -->
+    <link rel="preload" as="image" href="/qotion-logo.png" />
+    <link rel="preload" as="image" href="/qotion-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/favicon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <title>Flooq — Multiplayer Trivia on Any Topic</title>
-    <meta name="description" content="Fast-paced multiplayer trivia where YOU pick the topic. Chess, Brawlhalla, Dota 2, Indian history — any niche, any expertise. 15 seconds. No mercy." />
+    <title>Qotion — Questions in Motion</title>
+    <meta name="description" content="Fast-paced multiplayer trivia where YOU pick the topic. Chess, Science, History, Pop Culture — any niche, any expertise. 15 seconds. No mercy." />
 
-    <!-- Open Graph — WhatsApp, Discord, Facebook previews -->
+    <!-- Open Graph -->
     <meta property="og:type"        content="website" />
-    <meta property="og:title"       content="Flooq — Multiplayer Trivia on Any Topic" />
-    <meta property="og:description" content="Pick ANY topic. Chess. Brawlhalla. Invoker Spells. Delhi Metro. AI generates questions for your niche in seconds. 15-sec rounds. Can you beat your friends?" />
+    <meta property="og:title"       content="Qotion — Questions in Motion" />
+    <meta property="og:description" content="Pick ANY topic. AI generates questions for your niche in seconds. 15-sec rounds. Can you beat your friends?" />
     <meta property="og:image"       content="/og-image.png" />
     <meta property="og:image:width"  content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:url"         content="https://flooq.up.railway.app" />
+    <meta property="og:url"         content="https://qotion.online" />
 
-    <!-- Twitter / X card — large image -->
+    <!-- Twitter / X card -->
     <meta name="twitter:card"        content="summary_large_image" />
-    <meta name="twitter:title"       content="Flooq — Trivia on Any Topic" />
+    <meta name="twitter:title"       content="Qotion — Trivia on Any Topic" />
     <meta name="twitter:description" content="AI-powered multiplayer trivia. Pick ANY niche topic. 15 seconds. Play now." />
     <meta name="twitter:image"       content="/og-image.png" />
 
@@ -43,6 +52,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-
   </body>
 </html>

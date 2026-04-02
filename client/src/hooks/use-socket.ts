@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Room, Player, type RegionId } from '@shared/schema';
+import { Room, Player, type RegionId, type RoundRecord } from '@shared/schema';
 
 // ---------------------------------------------------------------------------
 // ANALYTICS HELPER
@@ -19,7 +19,7 @@ function track(eventName: string, params?: Record<string, string | number | bool
 // refreshes, and network drops. On reconnect we send it back so the server
 // can match us to our existing player slot without relying on name alone.
 // ---------------------------------------------------------------------------
-const PLAYER_ID_KEY   = 'flooq_player_id';
+const PLAYER_ID_KEY   = 'qotion_player_id';
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function loadStoredPlayerId(): string | null {
@@ -36,6 +36,25 @@ export interface TopicStat {
   topic: string;
   correct: number;
   total: number;
+}
+
+// Derives per-topic stats from the room's full round history.
+// Uses room-level data so stats are complete even if the player disconnected mid-game.
+function deriveTopicStats(history: RoundRecord[], playerId: string): TopicStat[] {
+  const map = new Map<string, { correct: number; total: number }>();
+  for (const round of history) {
+    const answerIndex = round.playerAnswers[playerId];
+    const participated = answerIndex !== undefined && answerIndex !== -2;
+    const wasCorrect   = participated && answerIndex === round.correctIndex && answerIndex >= 0;
+    const existing = map.get(round.topic);
+    if (existing) {
+      existing.correct += wasCorrect ? 1 : 0;
+      existing.total   += participated ? 1 : 0;
+    } else {
+      map.set(round.topic, { correct: wasCorrect ? 1 : 0, total: participated ? 1 : 0 });
+    }
+  }
+  return Array.from(map.entries()).map(([topic, s]) => ({ topic, ...s }));
 }
 
 export interface GameState {
@@ -95,7 +114,7 @@ export function useSocket() {
       sessionStorage.removeItem('playerName');
       sessionStorage.removeItem('avatarId');
       clearStoredPlayerId();
-      try { localStorage.removeItem('flooq_identity'); } catch {}
+      try { localStorage.removeItem('qotion_identity'); } catch {}
     };
   });
 
@@ -202,27 +221,15 @@ export function useSocket() {
           track('round_started', { topic: roomData.currentTopic, round: roomData.currentRound, players: roomData.players.length });
         }
 
-        // Per-topic accuracy tracking
-        let topicStats = prev.topicStats;
+        // Per-topic accuracy — derived from room.roundHistory (room-level source of truth)
+        // so stats are complete even if the player disconnected and rejoined mid-game.
         let bestStreak = prev.bestStreak;
-        if (prevStatus === 'question' && nextStatus === 'results' && roomData.currentTopic && me) {
-          const topic      = roomData.currentTopic;
-          const wasCorrect = me.lastAnswerCorrect === true;
-          const answered   = me.lastAnswerCorrect !== undefined;
-          const existing   = topicStats.find(s => s.topic === topic);
-          if (existing) {
-            topicStats = topicStats.map(s =>
-              s.topic === topic
-                ? { ...s, correct: s.correct + (wasCorrect ? 1 : 0), total: s.total + (answered ? 1 : 0) }
-                : s
-            );
-          } else {
-            topicStats = [...topicStats, { topic, correct: wasCorrect ? 1 : 0, total: answered ? 1 : 0 }];
-          }
-          bestStreak = Math.max(bestStreak, me.streak);
-        }
+        if (me) bestStreak = Math.max(bestStreak, me.streak);
+        if (prevStatus === 'ended' && nextStatus === 'lobby') { bestStreak = 0; }
 
-        if (prevStatus === 'ended' && nextStatus === 'lobby') { topicStats = []; bestStreak = 0; }
+        const topicStats: TopicStat[] = me
+          ? deriveTopicStats(roomData.roundHistory ?? [], me.id)
+          : prev.topicStats;
 
         if (prevStatus !== 'ended' && nextStatus === 'ended') {
           track('game_completed', { rounds_played: roomData.currentRound, players: roomData.players.length, mode: roomData.mode, target: roomData.target });
@@ -249,7 +256,8 @@ export function useSocket() {
 
     newSocket.on('kicked', (data: { message: string }) => {
       clearIdentity_socket();
-      setGameState(prev => ({ ...prev, wasKicked: true, kickMessage: data.message, error: null, room: null, me: null }));
+      const msg = encodeURIComponent(data.message || 'The host removed you from the room.');
+      window.location.replace('/kicked?reason=' + msg);
     });
 
     newSocket.on('reaction', (data: { playerId: string; emoji: string }) => {

@@ -33,7 +33,7 @@ export const CHARACTERS: AvatarCharacter[] = [
 
 // ── Fire color based on streak ────────────────────────────────────────────────
 export function getFireColor(streak: number): { color: string; glow: string; label: string } | null {
-  if (streak >= 7) return { color: "#a855f7", glow: "#a855f7", label: "Cosmic" };
+  if (streak >= 7) return { color: "#2dd4bf", glow: "#2dd4bf", label: "Cosmic" };
   if (streak >= 5) return { color: "#ec4899", glow: "#ec4899", label: "Inferno" };
   if (streak >= 3) return { color: "#f97316", glow: "#f97316", label: "Blazing" };
   if (streak >= 2) return { color: "#fbbf24", glow: "#fbbf24", label: "Warm" };
@@ -48,7 +48,7 @@ function GlitchGhost({ size, mood }: { size: number; mood: AvatarMood }) {
     <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
       <ellipse cx="40" cy="36" rx="22" ry="26" fill="#c4b5fd"/>
       <path d="M18 55 Q24 62 30 55 Q36 48 42 55 Q48 62 54 55 Q60 48 62 55 L62 36 Q62 62 40 62 Q18 62 18 36Z" fill="#c4b5fd"/>
-      <rect x="20" y="30" width="40" height="4" fill="#7c3aed" opacity="0.35" rx="2"/>
+      <rect x="20" y="30" width="40" height="4" fill="#0d9488" opacity="0.35" rx="2"/>
       {squint ? (
         <>
           <line x1="30" y1="34" x2="36" y2="37" stroke="#1e1b4b" strokeWidth="2.5" strokeLinecap="round"/>
@@ -266,8 +266,8 @@ function PossessedDuck({ size, mood }: { size: number; mood: AvatarMood }) {
       <circle cx="40" cy="30" r="16" fill="#fde047"/>
       <circle cx="34" cy="28" r="6" fill="#581c87"/>
       <circle cx="46" cy="28" r="6" fill="#581c87"/>
-      <circle cx="34" cy="28" r="3.5" fill={happy ? "#a855f7" : sad ? "#ef4444" : "#7c3aed"}/>
-      <circle cx="46" cy="28" r="3.5" fill={happy ? "#a855f7" : sad ? "#ef4444" : "#7c3aed"}/>
+      <circle cx="34" cy="28" r="3.5" fill={happy ? "#2dd4bf" : sad ? "#ef4444" : "#0d9488"}/>
+      <circle cx="46" cy="28" r="3.5" fill={happy ? "#2dd4bf" : sad ? "#ef4444" : "#0d9488"}/>
       <circle cx="35" cy="27" r="1" fill="white"/>
       <circle cx="47" cy="27" r="1" fill="white"/>
       <path d="M34 36 Q40 42 46 36 L43 32 Q40 30 37 32Z" fill="#f97316"/>
@@ -276,8 +276,8 @@ function PossessedDuck({ size, mood }: { size: number; mood: AvatarMood }) {
       <path d="M55 60 Q65 55 62 65" stroke="#fde047" strokeWidth="5" strokeLinecap="round" fill="none"/>
       {!sad && (
         <>
-          <path d="M20 20 Q16 16 14 12" stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
-          <path d="M60 20 Q64 16 66 12" stroke="#a855f7" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+          <path d="M20 20 Q16 16 14 12" stroke="#2dd4bf" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
+          <path d="M60 20 Q64 16 66 12" stroke="#2dd4bf" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
         </>
       )}
       {happy && <path d="M32 42 Q40 48 48 42" stroke="#ca8a04" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.5"/>}
@@ -759,7 +759,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
     : mood === "wrong"   ? "#ef4444"
     : mood === "timeout" ? "#eab308"
     : fire              ? fire.glow
-    : "#7c3aed";
+    : "#0d9488";
 
   const auraOpacity = mood === "idle" ? "33" : "55";
 
@@ -778,7 +778,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
       {/* Crown — leaderboard #1 */}
       {isLeader && (
         <div
-          data-flooq-avatar
+          data-qotion-avatar
           style={{
             position: "absolute",
             top: 0,
@@ -787,7 +787,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
             fontSize: size * 0.3,
             lineHeight: 1,
             filter: "drop-shadow(0 0 6px #facc15) drop-shadow(0 0 14px #f59e0b)",
-            animation: "flooq-crown 2.5s ease-in-out infinite",
+            animation: "qotion-crown 2.5s ease-in-out infinite",
             zIndex: 10,
             userSelect: "none",
           }}
@@ -811,12 +811,12 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
           }}
         >
           <div
-            data-flooq-avatar
+            data-qotion-avatar
             style={{
               fontSize: size * 0.34,
               lineHeight: 1,
               filter: `drop-shadow(0 0 6px ${fire.glow})`,
-              animation: "flooq-fire 0.65s ease-in-out infinite alternate",
+              animation: "qotion-fire 0.65s ease-in-out infinite alternate",
               color: fire.color,
             }}
           >
@@ -840,7 +840,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
 
       {/* Character SVG */}
       <div
-        data-flooq-avatar
+        data-qotion-avatar
         style={{
           transform:
             mood === "wrong"   ? "rotate(-5deg) scale(0.94)"
@@ -848,7 +848,7 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
             : "scale(1)",
           transition: "transform 0.28s cubic-bezier(.36,.07,.19,.97)",
           filter: `drop-shadow(0 0 ${size * 0.18}px ${auraColor}${auraOpacity})`,
-          animation: mood === "idle" ? "flooq-bob 3s ease-in-out infinite" : "none",
+          animation: mood === "idle" ? "qotion-bob 3s ease-in-out infinite" : "none",
         }}
       >
         <Char size={size} mood={mood} />
@@ -864,16 +864,16 @@ export function Avatar({ avatarId, mood = "idle", streak = 0, isLeader = false, 
 // We also gate the animations behind prefers-reduced-motion here so the inline
 // style override in Avatar respects the user's OS motion setting.
 if (typeof document !== "undefined") {
-  const STYLE_ID = "flooq-avatar-keyframes";
+  const STYLE_ID = "qotion-avatar-keyframes";
   if (!document.getElementById(STYLE_ID)) {
     const s = document.createElement("style");
     s.id = STYLE_ID;
     s.textContent = `
-      @keyframes flooq-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(-4px)} }
-      @keyframes flooq-crown { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-3px)} }
-      @keyframes flooq-fire  { 0%{transform:scale(1) rotate(-4deg)} 100%{transform:scale(1.14) rotate(4deg)} }
+      @keyframes qotion-bob   { 0%,100%{transform:translateY(0)}   50%{transform:translateY(-4px)} }
+      @keyframes qotion-crown { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-3px)} }
+      @keyframes qotion-fire  { 0%{transform:scale(1) rotate(-4deg)} 100%{transform:scale(1.14) rotate(4deg)} }
       @media (prefers-reduced-motion: reduce) {
-        [data-flooq-avatar] { animation: none !important; }
+        [data-qotion-avatar] { animation: none !important; }
       }
     `;
     document.head.appendChild(s);

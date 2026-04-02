@@ -8,7 +8,7 @@ function warn(msg: string) { console.warn( `[WARN]  ${ts()} [game] ${msg}`); }
 function err(msg: string)  { console.error(`[ERROR] ${ts()} [game] ${msg}`); }
 
 import {
-  Room, Player,
+  Room, Player, type RoundRecord,
   validatePlayerNameShared, containsProfanity,
   TOPIC_TIME_SECONDS, QUESTION_TIME_SECONDS,
   TOPIC_TIME_MIN, TOPIC_TIME_MAX,
@@ -258,6 +258,7 @@ function serializeRoom(room: Room): object {
     topicMode:             room.topicMode   ?? 'live',
     presetTopics:          room.presetTopics ?? {},
     pregeneratedQuestionsCount: (room.pregeneratedQuestions ?? []).length,
+    roundHistory:              room.roundHistory ? [...room.roundHistory] : [],
   };
 }
 
@@ -974,6 +975,7 @@ function resetRoomToLobby(room: Room, io: Server) {
   room.usedTopics           = [];
   room.askedQuestions       = [];
   room.answers              = {};
+  room.roundHistory         = [];
   room.questionParticipants = undefined;
   room.roundPlayerIds       = undefined;
   delete room.currentQuestion;
@@ -1301,6 +1303,21 @@ function proceedToResults(room: Room, io: Server) {
   });
 
   room.fastestPlayerId = fastestId;
+
+  // Record this round for the share card — captures every player's answer
+  // regardless of when they joined/disconnected, giving a room-level history.
+  if (room.currentTopic) {
+    const record: RoundRecord = {
+      topic: room.currentTopic,
+      correctIndex,
+      playerAnswers: Object.fromEntries(
+        Array.from(participants).map(pid => [pid, room.answers[pid]?.answerIndex ?? -2])
+      ),
+    };
+    if (!room.roundHistory) room.roundHistory = [];
+    room.roundHistory.push(record);
+  }
+
   io.to(room.code).emit("gameState", serializeRoom(room));
 
   // Results timer runs to completion — game engine drives next phase

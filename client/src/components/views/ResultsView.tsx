@@ -77,18 +77,19 @@ export function ResultsView({ room, me }: Props) {
   if (!room.currentQuestion) {
     return (
       <div className="flex items-center justify-center w-full py-20">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-teal-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
   const q = room.currentQuestion;
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col gap-2 pb-4 px-1">
+    <div className="w-full max-w-2xl mx-auto flex flex-col gap-2 pb-4 px-1" style={{ position: 'relative' }}>
+
 
       {/* Countdown bar */}
       <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-primary to-accent" style={barStyle} />
+        <div className="h-full bg-gradient-to-r from-teal-500 to-cyan-500" style={barStyle} />
       </div>
 
       {/* ── Result banner ── */}
@@ -234,9 +235,9 @@ function PodiumPanel({ sortedPlayers, me }: { sortedPlayers: Player[]; me: Playe
                 style={{
                   height: blockH[vi],
                   background: `linear-gradient(to top, ${gc}28, ${gc}08)`,
-                  border: `1.5px solid ${isMe ? "#a855f7" : gc + "50"}`,
+                  border: `1.5px solid ${isMe ? "#2dd4bf" : gc + "50"}`,
                   borderBottom: "none",
-                  boxShadow: isMe ? `0 0 12px #a855f720` : "none",
+                  boxShadow: isMe ? `0 0 12px #2dd4bf20` : "none",
                 }}
               >
                 <span style={{ fontSize: vi === 1 ? 20 : 15 }}>{medals[vi]}</span>
@@ -258,7 +259,7 @@ function PodiumPanel({ sortedPlayers, me }: { sortedPlayers: Player[]; me: Playe
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.28 + i * 0.05 }}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded-xl border ${
-                  isMe ? "bg-primary/15 border-primary/40" : "bg-white/5 border-white/10"
+                  isMe ? "bg-teal-500/15 border-teal-400/40" : "bg-white/5 border-white/10"
                 }`}
               >
                 <span className="text-[10px] font-bold text-white/30 w-4 text-center shrink-0">
@@ -280,7 +281,7 @@ function PodiumPanel({ sortedPlayers, me }: { sortedPlayers: Player[]; me: Playe
                   <div className="flex items-baseline gap-1">
                     <motion.span
                       key={p.score}
-                      initial={{ scale: 1.3, color: "#a855f7" }}
+                      initial={{ scale: 1.3, color: "#2dd4bf" }}
                       animate={{ scale: 1, color: "#fff" }}
                       transition={{ duration: 0.3 }}
                       style={{ fontSize: 12, fontWeight: 900, fontFamily: "monospace" }}
@@ -314,7 +315,7 @@ function ExplanationBlock({ explanation }: { explanation: string }) {
       animate={{ opacity: 1 }}
       transition={{ delay: 0.45 }}
       className="mt-2 p-2 md:p-2.5 rounded-xl cursor-pointer select-none"
-      style={{ background: "#7c3aed12", border: "1px solid #7c3aed30" }}
+      style={{ background: "#0d948812", border: "1px solid #0d948830" }}
       onClick={() => isLong && setExpanded(e => !e)}
     >
       <p className={`text-white/70 text-[10px] md:text-xs leading-relaxed flex gap-1.5 ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
@@ -322,7 +323,7 @@ function ExplanationBlock({ explanation }: { explanation: string }) {
         {explanation}
       </p>
       {isLong && (
-        <p className="text-primary/60 text-[9px] mt-1 font-medium">
+        <p className="text-teal-400/60 text-[9px] mt-1 font-medium">
           {expanded ? '▲ Show less' : '▼ Tap to read more'}
         </p>
       )}

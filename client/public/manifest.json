@@ -1,16 +1,31 @@
 {
-  "name": "Flooq — Multiplayer Trivia",
-  "short_name": "Flooq",
+  "name": "Qotion \u2014 Questions in Motion",
+  "short_name": "Qotion",
   "description": "Fast-paced multiplayer trivia. Pick ANY topic. 15 seconds. No mercy.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#07070E",
-  "theme_color": "#7C3AED",
+  "background_color": "#080e1a",
+  "theme_color": "#2dd4bf",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.png",
-      "sizes": "64x64",
+      "src": "/favicon-16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-512.png",
+      "sizes": "512x512",
       "type": "image/png"
     },
     {
@@ -20,6 +35,9 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["games", "entertainment"],
+  "categories": [
+    "games",
+    "entertainment"
+  ],
   "lang": "en"
 }

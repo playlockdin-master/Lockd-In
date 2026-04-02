@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { ParticleBackground } from "@/components/ParticleBackground";
 import { Button } from "@/components/Button";
-import { FlooqLogo } from "@/components/FlooqLogo";
+import { QotionLogo } from "@/components/QotionLogo";
 import { motion } from "framer-motion";
 import { Home } from "lucide-react";
 
@@ -18,18 +18,18 @@ export default function NotFound() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
       >
-        <FlooqLogo size="lg" />
+        <QotionLogo size="lg" />
 
         {/* 404 number */}
         <div className="relative">
           <div className="text-[120px] md:text-[180px] font-display font-black leading-none"
-            style={{ color: 'transparent', WebkitTextStroke: '2px rgba(168,85,247,0.3)' }}>
+            style={{ color: 'transparent', WebkitTextStroke: '2px rgba(45,212,191,0.3)' }}>
             404
           </div>
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-[120px] md:text-[180px] font-display font-black leading-none"
-              style={{ color: 'transparent', WebkitTextStroke: '1px rgba(168,85,247,0.15)',
-                backgroundImage: 'linear-gradient(135deg, #A855F7 0%, #3B82F6 100%)',
+              style={{ color: 'transparent', WebkitTextStroke: '1px rgba(45,212,191,0.15)',
+                backgroundImage: 'linear-gradient(135deg, #2dd4bf 0%, #06b6d4 100%)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               404
             </span>
@@ -47,7 +47,7 @@ export default function NotFound() {
 
         <Button size="lg" onClick={() => setLocation('/')}>
           <Home className="w-5 h-5 mr-2" />
-          Back to Flooq
+          Back to Qotion
         </Button>
       </motion.div>
     </div>

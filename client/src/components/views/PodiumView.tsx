@@ -111,8 +111,9 @@ export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStr
   }, []);
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-4 pb-8 px-1">
+    <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-4 pb-8 px-1" style={{ position: 'relative' }}>
       <Confetti />
+
 
       {gameEndedEarly && (
         <motion.div
@@ -177,7 +178,7 @@ export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStr
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1.5 + idx * 0.06 }}
               className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl ${
-                p.id === me.id ? 'bg-primary/20 border border-primary/40' : 'bg-white/5'
+                p.id === me.id ? 'bg-teal-500/20 border border-teal-400/40' : 'bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2 min-w-0">
@@ -186,7 +187,7 @@ export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStr
                 }`}>{idx + 1}</span>
                 <Avatar avatarId={p.avatarId ?? 'ghost'} mood="idle" streak={p.streak} isLeader={idx === 0} size={32} />
                 <span className="font-medium text-white text-xs md:text-sm truncate">{p.name}</span>
-                {p.id === me.id && <span className="text-[10px] text-primary font-bold shrink-0">(you)</span>}
+                {p.id === me.id && <span className="text-[10px] text-teal-400 font-bold shrink-0">(you)</span>}
                 {isTied(sorted, idx) && (
                   <span className="text-[10px] text-white/40 font-medium bg-white/10 px-1 py-0.5 rounded shrink-0">Tied</span>
                 )}

@@ -35,7 +35,7 @@ export function LeaderboardMini({ players, myId }: Props) {
               index === 0
                 ? 'bg-amber-500/20 border-amber-500/50 text-amber-200'
                 : isMe
-                  ? 'bg-primary/20 border-primary/50 text-white'
+                  ? 'bg-teal-500/20 border-teal-400/50 text-white'
                   : 'bg-white/5 border-white/10 text-white/80'
             } ${hotStreak ? 'streak-glow' : ''}`}
           >
@@ -79,7 +79,7 @@ export function LeaderboardMini({ players, myId }: Props) {
               layout
               layoutId={`leaderboard-mini-${me.id}`}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border bg-primary/20 border-primary/50 text-white ${hotStreak ? 'streak-glow' : ''}`}
+              className={`relative flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border bg-teal-500/20 border-teal-400/50 text-white ${hotStreak ? 'streak-glow' : ''}`}
             >
               <div className="font-bold text-sm">#{myRank + 1}</div>
               <div className="text-sm font-medium max-w-[72px] truncate">{me.name} ✦</div>

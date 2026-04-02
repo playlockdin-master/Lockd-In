@@ -27,8 +27,8 @@ const SOUND_VOLUMES: Record<SoundType, number> = {
 const POOL_SIZES: Partial<Record<SoundType, number>> = { tick: 3, click: 2 };
 
 const SFX_FADE_OUT_MS = 120;
-const SFX_MUTE_KEY    = 'flooq_sfx_muted';
-const BGM_MUTE_KEY    = 'flooq_bgm_muted';
+const SFX_MUTE_KEY    = 'qotion_sfx_muted';
+const BGM_MUTE_KEY    = 'qotion_bgm_muted';
 const BGM_URL         = `/assets/ambient-bgm${_ext}`; // MP3 on iOS/modern browsers, WAV as fallback
 const BGM_VOLUME      = 0.12;
 const BGM_FADE_STEPS  = 40;

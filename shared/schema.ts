@@ -185,6 +185,12 @@ export interface Player {
   isReconnecting?: boolean;
 }
 
+export interface RoundRecord {
+  topic: string;
+  correctIndex: number;
+  playerAnswers: Record<string, number>; // permanent playerId -> answerIndex (-1 = timeout, -2 = absent)
+}
+
 export interface Room {
   code: string;
   players: Player[];
@@ -223,4 +229,5 @@ export interface Room {
   regionMode?: RegionMode;    // 'global' (no bias) | 'regional' (biased to region)
   regionId?: RegionId;        // which region (only when regionMode === 'regional')
   countryCode?: string;       // optional drill-down to a specific country within the region
+  roundHistory?: RoundRecord[]; // full record of every round — used for share card stats
 }

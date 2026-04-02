@@ -166,7 +166,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
   };
   const handleShare = () => {
     const url = `${window.location.origin}/room/${room.code}`;
-    if (navigator.share) { navigator.share({ title: 'Join my Flooq room!', url }).catch(() => {}); }
+    if (navigator.share) { navigator.share({ title: 'Join my Qotion room!', url }).catch(() => {}); }
     else { if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).catch(() => fallbackCopy(url)); else fallbackCopy(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     playSound('click');
   };
@@ -191,16 +191,26 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
     : null;
 
   return (
-    <div className="w-full max-w-4xl mx-auto flex flex-col items-center pb-10">
+    <div className="w-full max-w-4xl mx-auto flex flex-col items-center pb-10" style={{ position: 'relative' }}>
+
+
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mb-6 md:mb-8 text-center w-full">
-        <h2 className="text-sm md:text-xl text-white/70 uppercase tracking-widest font-semibold mb-1 md:mb-2">Room Code</h2>
-        <div onClick={handleCopy} className="text-3xl md:text-7xl font-display font-black tracking-widest text-white cursor-pointer hover:text-primary transition-colors flex items-center justify-center gap-2 md:gap-4 group">
+        <h2 className="text-sm md:text-base text-white/50 uppercase tracking-[0.3em] font-semibold mb-1 md:mb-2">Room Code</h2>
+        <div onClick={handleCopy} className="text-3xl md:text-7xl font-display font-black tracking-widest cursor-pointer flex items-center justify-center gap-2 md:gap-4 group transition-colors"
+          style={{ color: 'white' }}
+          onMouseEnter={e => (e.currentTarget.style.color = '#2dd4bf')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'white')}
+        >
           {room.code}
-          <Copy className={`w-5 h-5 md:w-12 md:h-12 transition-all ${copied ? 'text-green-400' : 'text-white/20 group-hover:text-primary'}`} />
+          <Copy className={`w-5 h-5 md:w-12 md:h-12 transition-all ${copied ? 'text-green-400' : 'text-white/20 group-hover:text-teal-400'}`} />
         </div>
-        {copied && <p className="text-green-400 font-medium mt-1 text-sm">Copied!</p>}
-        <button onClick={handleShare} className="mt-2 md:mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white/70 hover:text-white text-xs md:text-sm font-medium transition-all">
-          <Share2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> Share Invite Link
+        {copied && <p className="text-teal-400 font-medium mt-1 text-sm">Copied!</p>}
+        <button onClick={handleShare} className="mt-2 md:mt-4 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs md:text-sm font-medium transition-all"
+          style={{ background: 'rgba(45,212,191,0.08)', borderColor: 'rgba(45,212,191,0.25)', color: 'rgba(255,255,255,0.7)' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(45,212,191,0.15)'; (e.currentTarget as HTMLElement).style.color = 'white'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(45,212,191,0.08)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)'; }}
+        >
+          <Share2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-teal-400" /> Share Invite Link
         </button>
       </motion.div>
 
@@ -209,7 +219,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
         {/* Players */}
         <Card className="flex flex-col h-full">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-display font-bold text-white flex items-center gap-2"><Users className="w-6 h-6 text-primary" /> Players</h3>
+            <h3 className="text-2xl font-display font-bold text-white flex items-center gap-2"><Users className="w-6 h-6 text-teal-400" /> Players</h3>
             <span className="bg-white/10 px-3 py-1 rounded-full text-sm font-medium">{room.players.length} / 8</span>
           </div>
 
@@ -278,11 +288,11 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   <label className="text-white/70 text-sm font-medium mb-2 block">How topics are chosen</label>
                   <div className="flex gap-2">
                     <button onClick={() => handleTopicStyleChange('live')} disabled={settingsLocked}
-                      className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${!isPresetMode ? 'bg-primary/20 border-primary/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
+                      className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${!isPresetMode ? 'bg-teal-500/20 border-teal-400/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
                       Live Topics
                     </button>
                     <button onClick={() => handleTopicStyleChange('preset')} disabled={settingsLocked}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isPresetMode ? 'bg-primary/20 border-primary/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${isPresetMode ? 'bg-teal-500/20 border-teal-400/60 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'}`}>
                       <BookOpen className="w-3.5 h-3.5" /> Preset Topics
                     </button>
                   </div>
@@ -325,7 +335,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   {!isPresetMode && <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-white/70 text-sm font-medium">Topic selection</label>
-                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{localTopicTime}s</span>
+                      <span className="text-teal-400 font-bold text-sm tabular-nums w-8 text-right">{localTopicTime}s</span>
                     </div>
                     <input type="range" min={TOPIC_TIME_MIN} max={TOPIC_TIME_MAX} step={5} value={localTopicTime} disabled={settingsLocked}
                       onChange={e => handleTopicTimeChange(Number(e.target.value))}
@@ -337,7 +347,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-white/70 text-sm font-medium">Answer time</label>
-                      <span className="text-primary font-bold text-sm tabular-nums w-8 text-right">{localQuestionTime}s</span>
+                      <span className="text-teal-400 font-bold text-sm tabular-nums w-8 text-right">{localQuestionTime}s</span>
                     </div>
                     <input type="range" min={QUESTION_TIME_MIN} max={QUESTION_TIME_MAX} step={5} value={localQuestionTime} disabled={settingsLocked}
                       onChange={e => handleQuestionTimeChange(Number(e.target.value))}
@@ -383,17 +393,17 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                               onKeyDown={e => { if (e.key === 'Enter') handleAddPresetTopic(); }}
                               placeholder="e.g. Spider-Man, Cricket..."
                               maxLength={50}
-                              className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-primary/60 transition-colors"
+                              className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-teal-400/60 transition-colors"
                             />
                             <div className="flex gap-1.5">
                               {(['Random', 'Easy', 'Medium', 'Hard'] as const).map(d => (
                                 <button key={d} onClick={() => setPresetDifficulty(d)}
-                                  className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all ${presetDifficulty === d ? (d === 'Easy' ? 'bg-green-500/20 border-green-500/40 text-green-300' : d === 'Medium' ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : d === 'Hard' ? 'bg-red-500/20 border-red-500/40 text-red-300' : 'bg-primary/20 border-primary/40 text-primary') : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70'}`}>
+                                  className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all ${presetDifficulty === d ? (d === 'Easy' ? 'bg-green-500/20 border-green-500/40 text-green-300' : d === 'Medium' ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : d === 'Hard' ? 'bg-red-500/20 border-red-500/40 text-red-300' : 'bg-teal-500/20 border-teal-400/40 text-teal-400') : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70'}`}>
                                   {d}
                                 </button>
                               ))}
                               <button onClick={handleAddPresetTopic} disabled={!presetTopicInput.trim()}
-                                className="px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                className="px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-400/40 text-teal-400 hover:bg-teal-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                                 <Plus className="w-4 h-4" />
                               </button>
                             </div>
@@ -442,7 +452,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                       <button key={rm} onClick={() => handleRegionModeChange(rm)} disabled={settingsLocked}
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                           localRegionMode === rm
-                            ? 'bg-primary/20 border-primary/60 text-white'
+                            ? 'bg-teal-500/20 border-teal-400/60 text-white'
                             : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'
                         }`}>
                         {rm === 'global' ? <Globe className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
@@ -468,7 +478,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                             <button key={r.id} onClick={() => handleRegionIdChange(r.id)} disabled={settingsLocked}
                               className={`px-3 py-2.5 rounded-xl border text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                                 localRegionId === r.id
-                                  ? 'bg-primary/20 border-primary/60 text-white'
+                                  ? 'bg-teal-500/20 border-teal-400/60 text-white'
                                   : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'
                               }`}>
                               <span className="text-base leading-none">{r.flag}</span>
@@ -487,14 +497,14 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                                 <div className="flex flex-wrap gap-1.5">
                                   <button onClick={() => handleCountryCodeChange(undefined)} disabled={settingsLocked}
                                     className={`px-2.5 py-1 rounded-full border text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                                      !localCountryCode ? 'bg-primary/20 border-primary text-primary' : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'
+                                      !localCountryCode ? 'bg-teal-500/20 border-teal-400 text-teal-400' : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'
                                     }`}>
                                     Whole region
                                   </button>
                                   {REGIONS.find(r => r.id === localRegionId)?.countries.map(c => (
                                     <button key={c.code} onClick={() => handleCountryCodeChange(c.code)} disabled={settingsLocked}
                                       className={`px-2.5 py-1 rounded-full border text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                                        localCountryCode === c.code ? 'bg-primary/20 border-primary text-primary' : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'
+                                        localCountryCode === c.code ? 'bg-teal-500/20 border-teal-400 text-teal-400' : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white/70'
                                       }`}>
                                       {c.flag} {c.label}
                                     </button>
@@ -517,6 +527,72 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-center space-y-4 w-full">
+
+                {/* Mascot waiting row — mirrors home page greeter style */}
+                <div className="flex items-end justify-center w-full mb-1">
+                  {/* Floating mascot */}
+                  <motion.div
+                    animate={{ y: [0, -6, 0] }}
+                    transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+                    style={{ flexShrink: 0, lineHeight: 0, marginBottom: '-4px' }}
+                  >
+                    <img
+                      src="/mascot_waiting.png"
+                      alt="Mascot waiting"
+                      style={{
+                        width: 'clamp(110px, 22vw, 160px)',
+                        height: 'auto',
+                        display: 'block',
+                      }}
+                    />
+                  </motion.div>
+
+                  {/* Speech bubble */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.85, x: -10 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    transition={{ duration: 0.45, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
+                    style={{
+                      position: 'relative',
+                      background: 'rgba(15, 25, 40, 0.92)',
+                      border: '1px solid rgba(45, 212, 191, 0.3)',
+                      borderRadius: '16px 16px 16px 4px',
+                      padding: '10px 14px',
+                      boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+                      marginLeft: '10px',
+                      marginBottom: '20px',
+                      flexShrink: 1,
+                      minHeight: '46px',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {/* Tail pointing left toward mascot */}
+                    <div style={{
+                      position: 'absolute', left: '-8px', bottom: '14px',
+                      width: 0, height: 0,
+                      borderTop: '8px solid transparent', borderBottom: '8px solid transparent',
+                      borderRight: '9px solid rgba(15, 25, 40, 0.92)',
+                    }} />
+                    <div style={{
+                      position: 'absolute', left: '-10px', bottom: '13px',
+                      width: 0, height: 0,
+                      borderTop: '9px solid transparent', borderBottom: '9px solid transparent',
+                      borderRight: '10px solid rgba(45, 212, 191, 0.3)',
+                    }} />
+                    <p style={{
+                      color: 'white',
+                      fontSize: 'clamp(12px, 2.8vw, 14px)',
+                      fontWeight: 600,
+                      lineHeight: 1.4,
+                      margin: 0,
+                    }}>
+                      Waiting for the host<br />
+                      <span style={{ color: '#2dd4bf' }}>to set things up… 🎮</span>
+                    </p>
+                  </motion.div>
+                </div>
+
                 <p className="text-white/70">Waiting for host to configure game...</p>
                 <div className="p-4 rounded-xl bg-white/5 border border-white/10 w-full space-y-1.5">
                   <p className="text-white font-medium text-lg">
@@ -525,7 +601,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                   <p className="text-white/40 text-sm">Answer: {questionTimeSecs}s</p>
                   <p className="text-white/40 text-sm flex items-center justify-center gap-1.5">
                     {room.regionMode === 'regional' && regionLabel
-                      ? <><MapPin className="w-3 h-3 text-primary/60" /><span className="text-primary/80 font-medium">{regionLabel}</span></>
+                      ? <><MapPin className="w-3 h-3 text-teal-400/60" /><span className="text-teal-400/80 font-medium">{regionLabel}</span></>
                       : <><Globe className="w-3 h-3 text-white/30" /><span>Global questions</span></>}
                   </p>
                 </div>
@@ -559,16 +635,16 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                             <input type="text" value={presetTopicInput} onChange={e => setPresetTopicInput(e.target.value)}
                               onKeyDown={e => { if (e.key === 'Enter') handleAddPresetTopic(); }}
                               placeholder="e.g. Spider-Man, Cricket..." maxLength={50}
-                              className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-primary/60 transition-colors" />
+                              className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-teal-400/60 transition-colors" />
                             <div className="flex gap-1.5">
                               {(['Random', 'Easy', 'Medium', 'Hard'] as const).map(d => (
                                 <button key={d} onClick={() => setPresetDifficulty(d)}
-                                  className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all ${presetDifficulty === d ? (d === 'Easy' ? 'bg-green-500/20 border-green-500/40 text-green-300' : d === 'Medium' ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : d === 'Hard' ? 'bg-red-500/20 border-red-500/40 text-red-300' : 'bg-primary/20 border-primary/40 text-primary') : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70'}`}>
+                                  className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-all ${presetDifficulty === d ? (d === 'Easy' ? 'bg-green-500/20 border-green-500/40 text-green-300' : d === 'Medium' ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : d === 'Hard' ? 'bg-red-500/20 border-red-500/40 text-red-300' : 'bg-teal-500/20 border-teal-400/40 text-teal-400') : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70'}`}>
                                   {d}
                                 </button>
                               ))}
                               <button onClick={handleAddPresetTopic} disabled={!presetTopicInput.trim()}
-                                className="px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 disabled:opacity-30 disabled:cursor-not-allowed">
+                                className="px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-400/40 text-teal-400 hover:bg-teal-500/30 disabled:opacity-30 disabled:cursor-not-allowed">
                                 <Plus className="w-4 h-4" />
                               </button>
                             </div>

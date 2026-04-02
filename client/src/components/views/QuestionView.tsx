@@ -64,7 +64,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
                 </p>
                 <p className="text-white/50 text-xs mb-2">{topicRejection.reason}</p>
                 <p className="text-white/70 text-xs">
-                  🎲 Switching to: <span className="text-primary font-bold">{topicRejection.newTopic}</span>
+                  🎲 Switching to: <span className="text-teal-400 font-bold">{topicRejection.newTopic}</span>
                 </p>
               </motion.div>
             )}
@@ -75,7 +75,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
             {[0, 1, 2].map(i => (
               <motion.div
                 key={i}
-                className="absolute rounded-full border border-primary/40"
+                className="absolute rounded-full border border-teal-400/40"
                 style={{ width: 32 + i * 22, height: 32 + i * 22 }}
                 animate={reduceMotion ? {} : { scale: [1, 1.15, 1], opacity: [0.6, 0.15, 0.6] }}
                 transition={{ duration: 1.6, repeat: reduceMotion ? 0 : Infinity, delay: i * 0.3, ease: 'easeInOut' }}
@@ -86,7 +86,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
               transition={{ duration: 1.2, repeat: reduceMotion ? 0 : Infinity, ease: "linear" }}
               className="w-10 h-10 relative z-10"
             >
-              <svg className="w-full h-full text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-full h-full text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
               </svg>
             </motion.div>
@@ -111,9 +111,9 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
           </motion.p>
 
           {room.currentTopic && (
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/30 mt-1">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/30 mt-1">
               <span className="text-white/50 text-sm">Topic:</span>
-              <span className="text-primary font-bold text-sm md:text-base">{room.currentTopic}</span>
+              <span className="text-teal-400 font-bold text-sm md:text-base">{room.currentTopic}</span>
             </div>
           )}
 
@@ -143,7 +143,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto flex flex-col gap-2 md:gap-4">
+    <div className="w-full max-w-4xl mx-auto flex flex-col gap-2 md:gap-4" style={{ position: 'relative' }}>
 
       {/* Mini leaderboard - horizontal scroll on mobile */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-2 px-2" style={{ scrollbarWidth: 'none' }}>
@@ -155,7 +155,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
               idx === 0
                 ? 'bg-amber-500/20 border-amber-500/40 text-amber-200'
                 : p.id === me.id
-                  ? 'bg-primary/20 border-primary/40 text-white'
+                  ? 'bg-teal-500/20 border-teal-400/40 text-white'
                   : 'bg-white/5 border-white/10 text-white/70'
             }`}
           >
@@ -173,7 +173,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
       <div className="flex items-center gap-1.5 flex-wrap min-w-0">
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium glass-panel min-w-0 max-w-[160px]">
           <span className="text-white/50 shrink-0">Topic:</span>
-          <span className="text-primary font-bold truncate">{room.currentTopic}</span>
+          <span className="text-teal-400 font-bold truncate">{room.currentTopic}</span>
         </span>
         <span className={`inline-flex px-2 py-1 rounded-full text-[10px] font-bold border shrink-0 ${difficultyColors[question.difficulty]}`}>
           {question.difficulty}
@@ -199,7 +199,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
           <div className="w-full flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
               <motion.div
-                className={`h-full rounded-full ${isClose ? 'bg-red-400' : 'bg-primary'}`}
+                className={`h-full rounded-full ${isClose ? 'bg-red-400' : 'bg-teal-400'}`}
                 animate={{ width: `${pct}%` }}
                 transition={{ duration: 0.5 }}
               />
@@ -216,19 +216,78 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
         {/* Progress bar */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-white/10 rounded-t-3xl overflow-hidden">
           <motion.div
-            className="h-full bg-gradient-to-r from-primary to-accent"
+            className="h-full bg-gradient-to-r from-teal-500 to-cyan-500"
             animate={{ width: `${(answerCount / room.players.length) * 100}%` }}
             transition={{ duration: 0.4 }}
           />
         </div>
 
-        <motion.h2
-          className="text-sm md:text-2xl font-display font-bold text-white mb-3 md:mb-5 leading-snug pt-2"
+        {/* Mascot asking the question */}
+        <motion.div
+          className="flex items-end gap-3 mb-3 md:mb-5 pt-2"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          {question.text}
-        </motion.h2>
+          {/* Floating mascot */}
+          <motion.div
+            animate={reduceMotion ? {} : { y: [0, -5, 0] }}
+            transition={{ duration: 3, repeat: reduceMotion ? 0 : Infinity, ease: 'easeInOut' }}
+            style={{ flexShrink: 0, lineHeight: 0, marginBottom: '-4px' }}
+          >
+            <img
+              src="/mascot_question.png"
+              alt="Mascot asking question"
+              style={{
+                width: 'clamp(72px, 14vw, 110px)',
+                height: 'auto',
+                display: 'block',
+              }}
+            />
+          </motion.div>
+
+          {/* Speech bubble — tail points left toward mascot */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.88, x: -8 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            transition={{ duration: 0.4, delay: 0.15, type: 'spring', stiffness: 280, damping: 24 }}
+            style={{
+              position: 'relative',
+              flex: 1,
+              background: 'rgba(15, 25, 40, 0.92)',
+              border: '1px solid rgba(45, 212, 191, 0.35)',
+              borderRadius: '4px 16px 16px 16px',
+              padding: '10px 14px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+              minHeight: '48px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {/* Tail pointing left toward mascot */}
+            <div style={{
+              position: 'absolute', left: '-8px', bottom: '14px',
+              width: 0, height: 0,
+              borderTop: '8px solid transparent', borderBottom: '8px solid transparent',
+              borderRight: '9px solid rgba(15, 25, 40, 0.92)',
+            }} />
+            <div style={{
+              position: 'absolute', left: '-10px', bottom: '13px',
+              width: 0, height: 0,
+              borderTop: '9px solid transparent', borderBottom: '9px solid transparent',
+              borderRight: '10px solid rgba(45, 212, 191, 0.35)',
+            }} />
+            <p style={{
+              color: 'white',
+              fontSize: 'clamp(13px, 3vw, 18px)',
+              fontWeight: 700,
+              lineHeight: 1.4,
+              margin: 0,
+              fontFamily: 'inherit',
+            }}>
+              {question.text}
+            </p>
+          </motion.div>
+        </motion.div>
 
         <div className="grid grid-cols-2 gap-2 md:gap-3">
           {question.options.map((opt, idx) => {
@@ -241,7 +300,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
               else if (isSelected && !isCorrect) stateClass = 'bg-destructive/20 border-2 border-destructive';
               else                               stateClass = 'bg-white/5 border border-white/5 opacity-40';
             } else if (isSelected) {
-              stateClass = 'bg-primary/20 border-2 border-primary box-glow';
+              stateClass = 'bg-teal-500/20 border-2 border-teal-400 box-glow';
             }
 
             return (
@@ -258,7 +317,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
                   <div className={`w-5 h-5 md:w-7 md:h-7 rounded-full flex items-center justify-center font-bold shrink-0 text-[10px] md:text-sm mt-0.5 ${
                     revealAnswer && isCorrect                  ? 'bg-success text-white'
                     : revealAnswer && isSelected && !isCorrect ? 'bg-destructive text-white'
-                    : isSelected                               ? 'bg-primary text-white'
+                    : isSelected ? 'bg-teal-500 text-white'
                     :                                            'bg-white/10 text-white/50'
                   }`}>
                     {['A','B','C','D'][idx]}

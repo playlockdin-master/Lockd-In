@@ -19,13 +19,13 @@ import { Input } from "@/components/Input";
 import { User, LogOut, Share2, Zap, Ban, RefreshCw, Search, DoorOpen, Timer } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
-import { FlooqLogo } from "@/components/FlooqLogo";
+import { QotionLogo } from "@/components/QotionLogo";
 
 // localStorage fallback with 2-hour TTL so identity survives tab closes
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000;
 function saveIdentity(name: string, avatarId: string) {
   const payload = JSON.stringify({ name, avatarId, expiresAt: Date.now() + IDENTITY_TTL_MS });
-  try { localStorage.setItem('flooq_identity', payload); } catch {}
+  try { localStorage.setItem('qotion_identity', payload); } catch {}
   sessionStorage.setItem('playerName', name);
   sessionStorage.setItem('avatarId', avatarId);
 }
@@ -35,10 +35,10 @@ function loadIdentity(): { name: string; avatarId: string } | null {
   if (ssName) return { name: ssName, avatarId: sessionStorage.getItem('avatarId') ?? 'ghost' };
   // localStorage fallback (different tab / after tab close)
   try {
-    const raw = localStorage.getItem('flooq_identity');
+    const raw = localStorage.getItem('qotion_identity');
     if (!raw) return null;
     const { name, avatarId, expiresAt } = JSON.parse(raw);
-    if (Date.now() > expiresAt) { localStorage.removeItem('flooq_identity'); return null; }
+    if (Date.now() > expiresAt) { localStorage.removeItem('qotion_identity'); return null; }
     // Restore to sessionStorage for this tab
     sessionStorage.setItem('playerName', name);
     sessionStorage.setItem('avatarId', avatarId);
@@ -49,8 +49,8 @@ function clearIdentity() {
   sessionStorage.removeItem('playerName');
   sessionStorage.removeItem('avatarId');
   try {
-    localStorage.removeItem('flooq_identity');
-    localStorage.removeItem('flooq_player_id'); // permanent identity
+    localStorage.removeItem('qotion_identity');
+    localStorage.removeItem('qotion_player_id'); // permanent identity
   } catch {}
 }
 
@@ -92,10 +92,10 @@ function NicknameModal({ roomCode, onJoin }: { roomCode: string; onJoin: (name: 
         className="relative z-10 glass-panel p-6 rounded-3xl w-full max-w-sm text-center"
       >
         <div className="mb-1 flex justify-center">
-          <FlooqLogo size="md" />
+          <QotionLogo size="md" />
         </div>
         <p className="text-white/50 text-sm mb-1">You've been invited to room</p>
-        <div className="text-2xl font-display font-black text-primary tracking-widest mb-4">{roomCode}</div>
+        <div className="text-2xl font-display font-black tracking-widest mb-4" style={{ color: '#2dd4bf' }}>{roomCode}</div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-left">
           <div>
@@ -245,45 +245,15 @@ export default function GameRoom() {
     );
   }
 
-  // Kicked by host — show as a portal overlay so GameRoom stays mounted
-  // (keeps URL at /room/XXXX during display), then replaces URL on dismiss
-  // so the player can't refresh back into the room.
+  // Kicked by host — write message to sessionStorage then navigate to home.
+  // Home.tsx reads it on mount and shows the kicked banner.
   if (wasKicked) {
-    return createPortal(
-      <div
-        style={{
-          position: 'fixed', inset: 0, zIndex: 200,
-          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-        }}
-      >
-        <motion.div
-          initial={{ scale: 0.85, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-          className="glass-panel p-8 rounded-3xl text-center max-w-md w-full"
-        >
-          <div className="text-5xl mb-4 flex justify-center"><Ban className="w-12 h-12 text-red-400" /></div>
-          <h2 className="text-2xl font-display font-bold text-white mb-3">You were removed</h2>
-          <p className="text-white/60 mb-6">
-            {kickMessage || 'The host removed you from the game.'}
-          </p>
-          <Button
-            className="w-full"
-            onClick={() => {
-              clearWasKicked();
-              // Replace URL NOW — after the player has seen the screen —
-              // so they can't refresh to rejoin. Then navigate home.
-              window.history.replaceState(null, '', '/');
-              setLocation('/');
-            }}
-          >
-            Back to Home
-          </Button>
-        </motion.div>
-      </div>,
-      document.body
-    );
+    try {
+      sessionStorage.setItem('qotion_kicked', kickMessage || 'The host removed you from the room.');
+    } catch {}
+    window.history.replaceState(null, '', '/');
+    setLocation('/');
+    return null;
   }
 
   // Server restarted and wiped this room — friendlier than a generic error
@@ -336,7 +306,7 @@ export default function GameRoom() {
     return (
       <div className="flex flex-col items-center justify-center p-4" style={{ minHeight: '100dvh' }}>
         <ParticleBackground />
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <div className="w-16 h-16 border-4 border-teal-400 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-white/60 font-medium">Entering Room...</p>
       </div>
     );
@@ -354,7 +324,7 @@ export default function GameRoom() {
         return (
           <div key="generating" className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center px-4">
             <div className="relative w-20 h-20">
-              <div className="absolute inset-0 rounded-full border-4 border-primary/20" />
+              <div className="absolute inset-0 rounded-full border-4 border-teal-400/20" />
               <div className="absolute inset-0 rounded-full border-4 border-t-primary animate-spin" />
             </div>
             <div className="space-y-2">
@@ -471,19 +441,20 @@ export default function GameRoom() {
       <ReactionOverlay />
 
       {/* Top Bar */}
-      <header className="sticky top-0 z-40 flex items-center justify-between px-3 py-2 md:px-6 md:py-3 bg-black/50 backdrop-blur-md border-b border-white/5 shrink-0 min-w-0 overflow-hidden">
+      <header className="sticky top-0 z-40 flex items-center justify-between px-3 py-2 md:px-6 md:py-3 backdrop-blur-md border-b shrink-0 min-w-0 overflow-hidden"
+        style={{ background: 'rgba(8,14,26,0.85)', borderColor: 'rgba(45,212,191,0.1)' }}>
         {/* Left: logo + share + leave */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <FlooqLogo size="sm" />
+        <div className="flex items-center gap-1.5 shrink-0 flex-1">
+          <QotionLogo size="sm" />
           {room && (
             <button
               onClick={() => {
                 const url = `${window.location.origin}/room/${room.code}`;
-                if (navigator.share) { navigator.share({ title: 'Join my Flooq room!', url }).catch(() => {}); }
+                if (navigator.share) { navigator.share({ title: 'Join my Qotion room!', url }).catch(() => {}); }
                 else { navigator.clipboard?.writeText(url).catch(() => {}); }
               }}
               title="Share room link"
-              className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-white/30 hover:text-primary hover:bg-primary/10 transition-colors text-xs font-medium"
+              className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-white/30 hover:text-teal-400 hover:bg-teal-400/10 transition-colors text-xs font-medium"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline text-xs font-mono text-white/40">{room.code}</span>
@@ -518,7 +489,7 @@ export default function GameRoom() {
         </div>
 
         {/* Right: reactions + audio — reactions are icon-only on mobile */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 flex-1 justify-end">
           {(room.status === 'question' || room.status === 'results') && (
             <div className="flex bg-black/40 rounded-full px-0.5 py-0.5 border border-white/10">
               {[
