@@ -239,7 +239,7 @@ function recordDifficulty(roomId: string, d: Difficulty): void {
 // SYSTEM PROMPT
 // ---------------------------------------------------------------------------
 
-const SYSTEM_INSTRUCTION = `You are a question writer for Flooq — a fast-paced competitive multiplayer trivia game.
+const SYSTEM_INSTRUCTION = `You are a question writer for Qotion — a fast-paced competitive multiplayer trivia game.
 
 GAME CONTEXT:
 - Players choose topics they personally know well — the picker has home-field advantage

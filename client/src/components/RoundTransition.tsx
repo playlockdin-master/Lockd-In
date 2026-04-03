@@ -29,7 +29,7 @@ export function RoundTransition({ round, totalRounds, selectorName, topic, visib
           transition={{ duration: 0.3 }}
           className="fixed inset-0 z-[90] flex items-center justify-center"
           style={{
-            background: "radial-gradient(ellipse at center, rgba(109,40,217,0.18) 0%, rgba(7,7,14,0.85) 70%)",
+            background: "radial-gradient(ellipse at center, rgba(13,148,136,0.22) 0%, rgba(7,7,14,0.85) 70%)",
             backdropFilter: "blur(6px)",
             WebkitBackdropFilter: "blur(6px)",
           }}
@@ -40,7 +40,7 @@ export function RoundTransition({ round, totalRounds, selectorName, topic, visib
               initial={{ opacity: 0, y: -20, scale: 0.8 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ delay: 0.1, type: "spring", stiffness: 280, damping: 22 }}
-              className="px-5 py-2 rounded-full bg-primary/20 border border-primary/40 text-primary font-bold text-sm tracking-widest uppercase"
+              className="px-5 py-2 rounded-full bg-teal-500/20 border border-teal-400/40 text-teal-400 font-bold text-sm tracking-widest uppercase"
             >
               Round {round}{totalRounds ? ` of ${totalRounds}` : ""}
             </motion.div>

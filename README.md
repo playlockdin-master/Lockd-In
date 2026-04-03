@@ -25,7 +25,7 @@ git add .
 git commit -m "Initial commit"
 
 # Create a new repo on github.com, then:
-git remote add origin https://github.com/YOUR_USERNAME/lockd-in.git
+git remote add origin https://github.com/YOUR_USERNAME/qotion.git
 git branch -M main
 git push -u origin main
 ```
@@ -36,7 +36,7 @@ git push -u origin main
 
 1. Go to [railway.app](https://railway.app) and click **New Project**
 2. Choose **Deploy from GitHub repo**
-3. Select your `lockd-in` repository
+3. Select your `qotion` repository
 4. Railway will auto-detect the config from `railway.toml` and start building
 
 ---
@@ -56,8 +56,8 @@ In Railway, go to your service → **Variables** tab and add:
 ### Step 4 — Set your Public URL
 
 1. In Railway, go to your service → **Settings** → **Networking**
-2. Click **Generate Domain** — you'll get a URL like `lockd-in.up.railway.app`
-3. Go back to **Variables** and set `CLIENT_ORIGIN` to that full URL (e.g. `https://lockd-in.up.railway.app`)
+2. Click **Generate Domain** — you'll get a URL like `qotion.up.railway.app`
+3. Go back to **Variables** and set `CLIENT_ORIGIN` to that full URL (e.g. `https://qotion.up.railway.app`)
 4. Trigger a redeploy (Railway → your service → three dots → Redeploy)
 
 Your game is now live. Share the URL with friends.

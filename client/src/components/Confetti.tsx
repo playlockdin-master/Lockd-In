@@ -13,7 +13,7 @@ interface Particle {
 }
 
 const COLORS = [
-  '#a855f7', '#ec4899', '#f59e0b', '#10b981',
+  '#2dd4bf', '#ec4899', '#f59e0b', '#10b981',
   '#3b82f6', '#f97316', '#84cc16', '#e879f9',
 ];
 

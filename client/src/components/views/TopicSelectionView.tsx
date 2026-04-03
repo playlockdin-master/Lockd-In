@@ -99,7 +99,8 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
   const displayChips = topicSuggestions.length > 0 ? topicSuggestions : FALLBACK_TOPICS;
 
   return (
-    <div className="w-full max-w-2xl mx-auto flex flex-col items-center pb-6 px-1">
+    <div className="w-full max-w-2xl mx-auto flex flex-col items-center pb-6 px-1" style={{ position: 'relative' }}>
+
 
       {/* Round announcement */}
       <motion.div
@@ -119,10 +120,10 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
 
       {/* Turn indicator */}
       <div className="mb-4 md:mb-8 w-full text-center">
-        <div className="inline-block px-4 py-2 rounded-full glass-panel border border-primary/30">
+        <div className="inline-block px-4 py-2 rounded-full glass-panel border border-teal-400/30">
           <p className="text-sm text-white/70">
             {isMyTurn ? (
-              <span className="text-primary font-semibold inline-flex items-center gap-1.5">
+              <span className="text-teal-400 font-semibold inline-flex items-center gap-1.5">
                 <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 inline" xmlns="http://www.w3.org/2000/svg">
                   <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.5"/>
                   <circle cx="8" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.75"/>
@@ -132,7 +133,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
               </span>
             ) : (
               <span>
-                <span className="text-primary font-semibold">{selector?.name}</span>
+                <span className="text-teal-400 font-semibold">{selector?.name}</span>
                 <span className="text-white/70"> is choosing...</span>
               </span>
             )}
@@ -172,7 +173,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none">
                         <path d="M2 5h8l-2-2M10 5l2 2M2 11h8l-2-2M10 11l2 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
-                      Switching to: <span className="text-primary font-bold">{topicRejection.newTopic}</span>
+                      Switching to: <span className="text-teal-400 font-bold">{topicRejection.newTopic}</span>
                     </p>
                   </motion.div>
                 )}
@@ -182,7 +183,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                 {[0, 1, 2].map(i => (
                   <motion.div
                     key={i}
-                    className="absolute rounded-full border border-primary/40"
+                    className="absolute rounded-full border border-teal-400/40"
                     style={{ width: 32 + i * 22, height: 32 + i * 22 }}
                     animate={reduceMotion ? {} : { scale: [1, 1.15, 1], opacity: [0.6, 0.15, 0.6] }}
                     transition={{ duration: 1.6, repeat: reduceMotion ? 0 : Infinity, delay: i * 0.3, ease: 'easeInOut' }}
@@ -193,7 +194,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                   transition={{ duration: 1.2, repeat: reduceMotion ? 0 : Infinity, ease: "linear" }}
                   className="w-10 h-10 relative z-10"
                 >
-                  <Sparkles className="w-full h-full text-primary" />
+                  <Sparkles className="w-full h-full text-teal-400" />
                 </motion.div>
               </div>
 
@@ -215,9 +216,9 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                 </svg>
                 AI is on it — faster than you can say "I knew that"
               </motion.p>
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/30 mt-1">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-500/10 border border-teal-400/30 mt-1">
                 <span className="text-white/50 text-sm">Topic:</span>
-                <span className="text-primary font-bold text-sm md:text-base">{room.currentTopic}</span>
+                <span className="text-teal-400 font-bold text-sm md:text-base">{room.currentTopic}</span>
               </div>
               <div className="relative w-48 h-1 mx-auto mt-6 rounded-full bg-white/10 overflow-hidden">
                 <motion.div
@@ -233,8 +234,8 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
         {/* — My turn to pick — */}
         {!isLoadingQuestion && isMyTurn && (
           <motion.div key="my-turn" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full">
-            <Card className="w-full border-primary/50 border-2">
-              <h2 className="text-2xl md:text-3xl font-display font-bold text-primary mb-1 text-center">
+            <Card className="w-full border-teal-400/50 border-2">
+              <h2 className="text-2xl md:text-3xl font-display font-bold text-teal-400 mb-1 text-center">
                 <span className="inline-flex items-center gap-2">
                   <svg viewBox="0 0 24 24" className="w-7 h-7 inline" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4"/>
@@ -365,8 +366,8 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                                 disabled={submitting}
                                 className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all
                                   ${topic === s
-                                    ? 'bg-primary/20 border-primary text-primary'
-                                    : 'bg-white/5 border-white/10 text-white/60 hover:border-primary/40 hover:text-white/90 hover:bg-primary/10'
+                                    ? 'bg-teal-500/20 border-teal-400 text-teal-400'
+                                    : 'bg-white/5 border-white/10 text-white/60 hover:border-teal-400/40 hover:text-white/90 hover:bg-teal-500/10'
                                   }`}
                               >
                                 {s}
@@ -398,6 +399,70 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
                 {selector?.name} is choosing...
               </h2>
               <p className="text-sm md:text-base text-white/50">Get ready for anything.</p>
+
+              {/* Mascot waiting row — same format as home page greeter */}
+              <div className="flex items-end justify-center mt-6">
+                {/* Floating mascot */}
+                <motion.div
+                  animate={reduceMotion ? {} : { y: [0, -6, 0] }}
+                  transition={{ duration: 3.2, repeat: reduceMotion ? 0 : Infinity, ease: "easeInOut" }}
+                  style={{ flexShrink: 0, lineHeight: 0, marginBottom: '-4px' }}
+                >
+                  <img
+                    src="/mascot_waiting.png"
+                    alt="Mascot waiting"
+                    style={{
+                      width: 'clamp(90px, 18vw, 130px)',
+                      height: 'auto',
+                      display: 'block',
+                    }}
+                  />
+                </motion.div>
+
+                {/* Speech bubble */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.85, x: -10 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  transition={{ duration: 0.45, delay: 0.3, type: 'spring', stiffness: 260, damping: 22 }}
+                  style={{
+                    position: 'relative',
+                    background: 'rgba(15, 25, 40, 0.92)',
+                    border: '1px solid rgba(45, 212, 191, 0.3)',
+                    borderRadius: '16px 16px 16px 4px',
+                    padding: '10px 14px',
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+                    marginLeft: '10px',
+                    marginBottom: '20px',
+                    flexShrink: 1,
+                    minHeight: '46px',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  {/* Tail pointing left toward mascot */}
+                  <div style={{
+                    position: 'absolute', left: '-8px', bottom: '14px',
+                    width: 0, height: 0,
+                    borderTop: '8px solid transparent', borderBottom: '8px solid transparent',
+                    borderRight: '9px solid rgba(15, 25, 40, 0.92)',
+                  }} />
+                  <div style={{
+                    position: 'absolute', left: '-10px', bottom: '13px',
+                    width: 0, height: 0,
+                    borderTop: '9px solid transparent', borderBottom: '9px solid transparent',
+                    borderRight: '10px solid rgba(45, 212, 191, 0.3)',
+                  }} />
+                  <p style={{
+                    color: 'white',
+                    fontSize: 'clamp(12px, 2.8vw, 14px)',
+                    fontWeight: 600,
+                    lineHeight: 1.4,
+                    margin: 0,
+                  }}>
+                    Waiting for a topic… <span style={{ color: '#2dd4bf' }}>🧠</span>
+                  </p>
+                </motion.div>
+              </div>
             </Card>
           </motion.div>
         )}

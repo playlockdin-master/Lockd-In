@@ -19,7 +19,7 @@ function track(eventName: string, params?: Record<string, string | number | bool
 // refreshes, and network drops. On reconnect we send it back so the server
 // can match us to our existing player slot without relying on name alone.
 // ---------------------------------------------------------------------------
-const PLAYER_ID_KEY   = 'flooq_player_id';
+const PLAYER_ID_KEY   = 'qotion_player_id';
 const IDENTITY_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function loadStoredPlayerId(): string | null {
@@ -114,7 +114,7 @@ export function useSocket() {
       sessionStorage.removeItem('playerName');
       sessionStorage.removeItem('avatarId');
       clearStoredPlayerId();
-      try { localStorage.removeItem('flooq_identity'); } catch {}
+      try { localStorage.removeItem('qotion_identity'); } catch {}
     };
   });
 

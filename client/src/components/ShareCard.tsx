@@ -50,8 +50,8 @@ function PassportCard({ me, room, topicStats, bestStreak }: Props) {
 
   return (
     <div style={{
-      background: "#0D0D1A",
-      border: "1px solid rgba(255,255,255,0.1)",
+      background: "#080e1a",
+      border: "1px solid rgba(45,212,191,0.15)",
       borderRadius: 20,
       padding: 24,
       width: 380,
@@ -60,15 +60,13 @@ function PassportCard({ me, room, topicStats, bestStreak }: Props) {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <div style={{ fontFamily: "'Outfit', sans-serif", fontSize: 22, fontWeight: 900, letterSpacing: -1 }}>
-          <span style={{ color: "white" }}>f</span>
-          <span style={{ color: "#A855F7" }}>l</span>
-          <span style={{ color: "white" }}>oo</span>
-          <span style={{ color: "#A855F7" }}>q</span>
+          <span style={{ color: "#2dd4bf" }}>Q</span>
+          <span style={{ color: "white" }}>otion</span>
         </div>
         <div style={{
-          background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.3)",
+          background: "rgba(45,212,191,0.12)", border: "1px solid rgba(45,212,191,0.3)",
           borderRadius: 20, padding: "4px 12px",
-          fontSize: 11, fontWeight: 600, color: "#A855F7", letterSpacing: 1,
+          fontSize: 11, fontWeight: 600, color: "#2dd4bf", letterSpacing: 1,
         }}>
           {rankLabelDisplay(rank)}
         </div>
@@ -127,8 +125,8 @@ function PassportCard({ me, room, topicStats, bestStreak }: Props) {
         ))}
       </div>
 
-      <div style={{ textAlign: "center", marginTop: 14, fontSize: 10, color: "rgba(168,85,247,0.45)", letterSpacing: 1 }}>
-        flooq.up.railway.app
+      <div style={{ textAlign: "center", marginTop: 14, fontSize: 10, color: "rgba(45,212,191,0.45)", letterSpacing: 1 }}>
+        qotion.online
       </div>
     </div>
   );
@@ -161,7 +159,7 @@ function StreakCard({ me, room, topicStats, bestStreak }: Props) {
             {me.name} hit a x{bestStreak} streak
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
-            in Flooq · {room.players.length} players
+            in Qotion · {room.players.length} players
           </div>
         </div>
       </div>
@@ -187,11 +185,11 @@ function StreakCard({ me, room, topicStats, bestStreak }: Props) {
         display: "flex", alignItems: "center", justifyContent: "space-between",
         paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.06)",
       }}>
-        <div style={{ fontSize: 11, color: "rgba(168,85,247,0.55)", letterSpacing: 1 }}>
-          flooq.up.railway.app
+        <div style={{ fontSize: 11, color: "rgba(45,212,191,0.55)", letterSpacing: 1 }}>
+          qotion.online
         </div>
         <div style={{
-          background: "#7C3AED", borderRadius: 20, padding: "6px 16px",
+          background: "#0d9488", borderRadius: 20, padding: "6px 16px",
           fontSize: 12, fontWeight: 600, color: "white",
         }}>
           Beat my streak
@@ -207,18 +205,18 @@ function passportShareText(me: Player, room: Room, topicStats: TopicStat[], best
   const acc  = accuracy(topicStats);
   const topics = topicStats.slice(0, 4).map(s => s.topic).join(", ");
   const rankStr = rank === 1 ? "won" : `came #${rank}`;
-  return `I ${rankStr} a Flooq game with ${me.score} pts 🧠\n` +
+  return `I ${rankStr} a Qotion game with ${me.score} pts 🧠\n` +
     `Topics: ${topics}\n` +
     `Best streak: x${bestStreak} · Accuracy: ${acc}%\n` +
-    `flooq.up.railway.app`;
+    `qotion.online`;
 }
 
 function streakShareText(me: Player, bestStreak: number, topicStats: TopicStat[]): string {
   const hotTopics = topicStats.filter(s => s.total > 0 && s.correct === s.total).map(s => s.topic);
   const topicsStr = hotTopics.length > 0 ? hotTopics.join(", ") : topicStats.slice(0, 3).map(s => s.topic).join(", ");
-  return `I hit a x${bestStreak} streak on Flooq! 🔥\n` +
+  return `I hit a x${bestStreak} streak on Qotion! 🔥\n` +
     `Dominated: ${topicsStr}\n` +
-    `Can you beat it? flooq.up.railway.app`;
+    `Can you beat it? qotion.online`;
 }
 
 // ── Main ShareCard modal ──────────────────────────────────────────────────────
@@ -270,15 +268,15 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
       const statY  = 120 + gridH + 16;
       return (
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"380\" height=\"" + totalH + "\">" +
-        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"#0d0d1a\"/>" +
+        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"#080e1a\"/>" +
         "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"url(#pg)\"/>" +
         "<defs>" +
-        "<linearGradient id=\"ag\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#a855f7\"/><stop offset=\"100%\" stop-color=\"#3b82f6\"/></linearGradient>" +
-        "<radialGradient id=\"pg\" cx=\"20%\" cy=\"50%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#4c1d95\" stop-opacity=\"0.2\"/><stop offset=\"100%\" stop-color=\"#0d0d1a\" stop-opacity=\"0\"/></radialGradient>" +
+        "<linearGradient id=\"ag\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0%\" stop-color=\"#2dd4bf\"/><stop offset=\"100%\" stop-color=\"#06b6d4\"/></linearGradient>" +
+        "<radialGradient id=\"pg\" cx=\"20%\" cy=\"50%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#0d9488\" stop-opacity=\"0.18\"/><stop offset=\"100%\" stop-color=\"#080e1a\" stop-opacity=\"0\"/></radialGradient>" +
         "</defs>" +
-        "<text x=\"24\" y=\"42\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"#a855f7\">f<tspan fill=\"white\">loo</tspan>q</text>" +
-        "<rect x=\"254\" y=\"24\" width=\"102\" height=\"26\" rx=\"13\" fill=\"#a855f722\" stroke=\"#a855f744\" stroke-width=\"1\"/>" +
-        "<text x=\"305\" y=\"41\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"11\" font-weight=\"600\" fill=\"#a855f7\">" + rankLbl + "</text>" +
+        "<text x=\"24\" y=\"42\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"#2dd4bf\">Q<tspan fill=\"white\">otion</tspan></text>" +
+        "<rect x=\"254\" y=\"24\" width=\"102\" height=\"26\" rx=\"13\" fill=\"#2dd4bf22\" stroke=\"#2dd4bf44\" stroke-width=\"1\"/>" +
+        "<text x=\"305\" y=\"41\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"11\" font-weight=\"600\" fill=\"#2dd4bf\">" + rankLbl + "</text>" +
         "<text x=\"24\" y=\"80\" font-family=\"system-ui\" font-size=\"24\" font-weight=\"900\" fill=\"white\">" + me.name + "</text>" +
         "<text x=\"24\" y=\"100\" font-family=\"system-ui\" font-size=\"11\" fill=\"#ffffff55\">" + room.players.length + " PLAYERS · " + room.currentRound + " ROUNDS</text>" +
         chips +
@@ -289,7 +287,7 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
         "<text x=\"190\" y=\"" + (statY + 42) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"9\" fill=\"#ffffff44\">BEST STREAK</text>" +
         "<text x=\"316\" y=\"" + (statY + 28) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"22\" font-weight=\"900\" fill=\"white\">" + acc + "%</text>" +
         "<text x=\"316\" y=\"" + (statY + 42) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"9\" fill=\"#ffffff44\">ACCURACY</text>" +
-        "<text x=\"190\" y=\"" + (totalH - 10) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"10\" fill=\"#a855f744\">flooq.up.railway.app</text>" +
+        "<text x=\"190\" y=\"" + (totalH - 10) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"10\" fill=\"#2dd4bf44\">qotion.online</text>" +
         "</svg>"
       );
     } else {
@@ -315,18 +313,18 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
       const lineY  = 96 + pillH + 14;
       return (
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"380\" height=\"" + totalH + "\">" +
-        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"#0d0d1a\"/>" +
-        "<defs><radialGradient id=\"sg\" cx=\"20%\" cy=\"30%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#92400e\" stop-opacity=\"0.15\"/><stop offset=\"100%\" stop-color=\"#0d0d1a\" stop-opacity=\"0\"/></radialGradient></defs>" +
+        "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"#080e1a\"/>" +
+        "<defs><radialGradient id=\"sg\" cx=\"20%\" cy=\"30%\" r=\"60%\"><stop offset=\"0%\" stop-color=\"#92400e\" stop-opacity=\"0.15\"/><stop offset=\"100%\" stop-color=\"#080e1a\" stop-opacity=\"0\"/></radialGradient></defs>" +
         "<rect width=\"380\" height=\"" + totalH + "\" rx=\"20\" fill=\"url(#sg)\"/>" +
         "<rect x=\"24\" y=\"20\" width=\"44\" height=\"44\" rx=\"12\" fill=\"#78350f33\" stroke=\"#f59e0b44\" stroke-width=\"1\"/>" +
         // SVG flame path replaces the 🔥 emoji <text> node — emoji don't render on canvas
         "<path d=\"M46 58 C46 52 42 48 44 43 C41 46 39 50 40 54 C38 52 38 48 39 45 C36 48 35 53 37 57 C35 55 34 51 35 48 C31 52 31 59 36 63 C34 61 34 57 36 56 C37 60 41 63 46 63 C51 63 54 59 54 55 C54 51 51 48 48 46 C50 50 49 54 46 58Z\" fill=\"#f97316\"/>" +
         "<text x=\"80\" y=\"40\" font-family=\"system-ui\" font-size=\"18\" font-weight=\"900\" fill=\"white\">" + me.name + " hit a x" + bestStreak + " streak</text>" +
-        "<text x=\"80\" y=\"58\" font-family=\"system-ui\" font-size=\"12\" fill=\"#ffffff44\">in Flooq · " + room.players.length + " players</text>" +
+        "<text x=\"80\" y=\"58\" font-family=\"system-ui\" font-size=\"12\" fill=\"#ffffff44\">in Qotion · " + room.players.length + " players</text>" +
         pillSvg +
         "<line x1=\"24\" y1=\"" + lineY + "\" x2=\"356\" y2=\"" + lineY + "\" stroke=\"#ffffff11\" stroke-width=\"1\"/>" +
-        "<text x=\"24\" y=\"" + (lineY + 22) + "\" font-family=\"system-ui\" font-size=\"11\" fill=\"#a855f766\">flooq.up.railway.app</text>" +
-        "<rect x=\"270\" y=\"" + (lineY + 6) + "\" width=\"110\" height=\"28\" rx=\"14\" fill=\"#7c3aed\"/>" +
+        "<text x=\"24\" y=\"" + (lineY + 22) + "\" font-family=\"system-ui\" font-size=\"11\" fill=\"#2dd4bf66\">qotion.online</text>" +
+        "<rect x=\"270\" y=\"" + (lineY + 6) + "\" width=\"110\" height=\"28\" rx=\"14\" fill=\"#0d9488\"/>" +
         "<text x=\"325\" y=\"" + (lineY + 24) + "\" text-anchor=\"middle\" font-family=\"system-ui\" font-size=\"12\" font-weight=\"600\" fill=\"white\">Beat my streak</text>" +
         "</svg>"
       );
@@ -396,7 +394,7 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `flooq-result.svg`;
+    a.download = `qotion-result.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -408,9 +406,9 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
     // iMessage, and most social apps. PNG is the only universally accepted image format.
     try {
       const pngBlob = await svgToPngBlob();
-      const file = new File([pngBlob], 'flooq-result.png', { type: 'image/png' });
+      const file = new File([pngBlob], 'qotion-result.png', { type: 'image/png' });
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'My Flooq result', text: shareText });
+        await navigator.share({ files: [file], title: 'My Qotion result', text: shareText });
         return;
       }
     } catch { /* fallthrough to text share */ }
@@ -495,7 +493,7 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
                       style={{
                         flex: 1, padding: "8px 0", border: "none", cursor: "pointer",
                         borderRadius: 10, fontSize: 12, fontWeight: 600,
-                        background: tab === t ? "#7C3AED" : "transparent",
+                        background: tab === t ? "#0d9488" : "transparent",
                         color: tab === t ? "white" : "rgba(255,255,255,0.4)",
                         transition: "all 0.15s",
                       }}
@@ -530,7 +528,7 @@ export function ShareCard({ me, room, topicStats, bestStreak }: Props) {
                   onClick={handleShare}
                   style={{
                     width: "100%", padding: "14px 0", border: "none", cursor: "pointer",
-                    background: copied ? "#059669" : "linear-gradient(135deg, #7C3AED, #2563EB)",
+                    background: copied ? "#059669" : "linear-gradient(135deg, #0d9488, #0891b2)",
                     borderRadius: 14, fontFamily: "'Outfit', sans-serif",
                     fontSize: 15, fontWeight: 700, color: "white",
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
