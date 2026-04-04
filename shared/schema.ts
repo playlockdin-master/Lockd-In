@@ -1,3 +1,121 @@
+// ── Drizzle DB table definitions ─────────────────────────────────────────────
+import {
+  pgTable, uuid, text, boolean, integer, timestamp, jsonb, index, primaryKey,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+export const users = pgTable('users', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  oauthProvider: text('oauth_provider').notNull(),           // 'google' | 'discord'
+  oauthId:       text('oauth_id').notNull(),                 // provider's user id
+  username:      text('username').notNull(),
+  avatarId:      text('avatar_id').notNull().default('ghost'),
+  createdAt:     timestamp('created_at').notNull().defaultNow(),
+  lastSeenAt:    timestamp('last_seen_at').notNull().defaultNow(),
+}, t => ({
+  providerIdx: index('users_provider_idx').on(t.oauthProvider, t.oauthId),
+}));
+
+export const questions = pgTable('questions', {
+  id:             uuid('id').primaryKey().defaultRandom(),
+  topic:          text('topic').notNull(),
+  canonicalTopic: text('canonical_topic').notNull(),
+  text:           text('text').notNull(),
+  options:        jsonb('options').notNull().$type<string[]>(),
+  correctIndex:   integer('correct_index').notNull(),
+  explanation:    text('explanation').notNull(),
+  difficulty:     text('difficulty').notNull(),              // 'Easy' | 'Medium' | 'Hard'
+  region:         text('region').notNull().default('global'),// 'global' | RegionId
+  isActive:       boolean('is_active').notNull().default(true),
+  createdAt:      timestamp('created_at').notNull().defaultNow(),
+}, t => ({
+  topicIdx:  index('questions_topic_idx').on(t.canonicalTopic),
+  regionIdx: index('questions_region_idx').on(t.region),
+}));
+
+export const games = pgTable('games', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  roomCode:   text('room_code').notNull(),
+  mode:       text('mode').notNull(),                        // 'round' | 'score'
+  target:     integer('target').notNull(),
+  regionMode: text('region_mode').notNull().default('global'),
+  startedAt:  timestamp('started_at').notNull().defaultNow(),
+  endedAt:    timestamp('ended_at'),
+});
+
+export const gamePlayers = pgTable('game_players', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  gameId:     uuid('game_id').notNull().references(() => games.id, { onDelete: 'cascade' }),
+  userId:     uuid('user_id').references(() => users.id, { onDelete: 'set null' }), // null = guest
+  playerName: text('player_name').notNull(),
+  avatarId:   text('avatar_id').notNull().default('ghost'),
+  finalScore: integer('final_score').notNull().default(0),
+  bestStreak: integer('best_streak').notNull().default(0),
+}, t => ({
+  gameIdx: index('game_players_game_idx').on(t.gameId),
+  userIdx: index('game_players_user_idx').on(t.userId),
+}));
+
+export const gameRounds = pgTable('game_rounds', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  gameId:      uuid('game_id').notNull().references(() => games.id, { onDelete: 'cascade' }),
+  questionId:  uuid('question_id').references(() => questions.id, { onDelete: 'set null' }),
+  roundNumber: integer('round_number').notNull(),
+  topic:       text('topic').notNull(),
+}, t => ({
+  gameIdx: index('game_rounds_game_idx').on(t.gameId),
+}));
+
+export const roundAnswers = pgTable('round_answers', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  roundId:      uuid('round_id').notNull().references(() => gameRounds.id, { onDelete: 'cascade' }),
+  userId:       uuid('user_id').references(() => users.id, { onDelete: 'set null' }), // null = guest
+  answerIndex:  integer('answer_index').notNull(),           // -1 = timeout, -2 = absent
+  timeTaken:    integer('time_taken').notNull().default(0),  // ms remaining when answered
+  wasCorrect:   boolean('was_correct').notNull().default(false),
+  pointsEarned: integer('points_earned').notNull().default(0),
+}, t => ({
+  roundIdx: index('round_answers_round_idx').on(t.roundId),
+  userIdx:  index('round_answers_user_idx').on(t.userId),
+}));
+
+export const playerSeenQuestions = pgTable('player_seen_questions', {
+  userId:     uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  questionId: uuid('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
+  seenAt:     timestamp('seen_at').notNull().defaultNow(),
+}, t => ({
+  pk:       primaryKey({ columns: [t.userId, t.questionId] }),
+  userIdx:  index('psq_user_idx').on(t.userId),
+}));
+
+// ── Relations ─────────────────────────────────────────────────────────────────
+export const usersRelations = relations(users, ({ many }) => ({
+  gamePlayers:          many(gamePlayers),
+  roundAnswers:         many(roundAnswers),
+  playerSeenQuestions:  many(playerSeenQuestions),
+}));
+
+export const gamesRelations = relations(games, ({ many }) => ({
+  gamePlayers: many(gamePlayers),
+  gameRounds:  many(gameRounds),
+}));
+
+export const gameRoundsRelations = relations(gameRounds, ({ one, many }) => ({
+  game:         one(games,     { fields: [gameRounds.gameId],     references: [games.id] }),
+  question:     one(questions, { fields: [gameRounds.questionId], references: [questions.id] }),
+  roundAnswers: many(roundAnswers),
+}));
+
+export const roundAnswersRelations = relations(roundAnswers, ({ one }) => ({
+  round: one(gameRounds, { fields: [roundAnswers.roundId], references: [gameRounds.id] }),
+  user:  one(users,      { fields: [roundAnswers.userId],  references: [users.id] }),
+}));
+
+export const playerSeenQuestionsRelations = relations(playerSeenQuestions, ({ one }) => ({
+  user:     one(users,     { fields: [playerSeenQuestions.userId],     references: [users.id] }),
+  question: one(questions, { fields: [playerSeenQuestions.questionId], references: [questions.id] }),
+}));
+
 // ── Shared profanity list — single source of truth for client + server ────────
 export const PROFANITY_SET = new Set([
   'fuck','shit','cunt','bitch','asshole','bastard','cock','dick','pussy',

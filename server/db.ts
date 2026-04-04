@@ -4,10 +4,18 @@ import * as schema from "@shared/schema";
 
 const { Pool } = pg;
 
-// DATABASE_URL is optional — the game uses in-memory state only.
-// If a database URL is provided, a connection pool is available for future persistence features.
+if (!process.env.DATABASE_URL) {
+  console.warn("[db] DATABASE_URL not set — database features (auth, question bank, history) will be unavailable.");
+}
+
 export const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  ? new Pool({ connectionString: process.env.DATABASE_URL, max: 10 })
   : null;
 
 export const db = pool ? drizzle(pool, { schema }) : null;
+
+// Re-export tables for convenient imports elsewhere
+export {
+  users, questions, games, gamePlayers,
+  gameRounds, roundAnswers, playerSeenQuestions,
+} from "@shared/schema";
