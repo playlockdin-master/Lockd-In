@@ -25,12 +25,19 @@ export function useAuth() {
   useEffect(() => { fetchMe(); }, [fetchMe]);
 
   const login = () => {
-    window.location.href = `/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`;
+    // Pass current path as returnTo so user lands back where they were
+    // Don't encode it — the server puts it in the session, not in the URL params
+    const returnTo = window.location.pathname;
+    window.location.href = `/auth/google?returnTo=${encodeURIComponent(returnTo)}`;
   };
 
   const logout = async () => {
-    await fetch("/auth/logout", { method: "POST", credentials: "include" });
+    try {
+      await fetch("/auth/logout", { method: "POST", credentials: "include" });
+    } catch {}
     setUser(null);
+    // Hard reload to clear any cached state
+    window.location.href = "/";
   };
 
   return { user, loading, login, logout, refetch: fetchMe };
