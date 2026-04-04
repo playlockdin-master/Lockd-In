@@ -1,6 +1,6 @@
 import { Room, Player } from "@shared/schema";
 import { motion } from "framer-motion";
-import { Trophy, Star, RotateCcw, RefreshCw, Users, CheckCircle2, Clock } from "lucide-react";
+import { Trophy, Star, RotateCcw, RefreshCw, Users, CheckCircle2, Clock, Globe } from "lucide-react";
 import { Button } from "../Button";
 import { Avatar } from "../Avatar";
 import { useAudioSystem } from "@/hooks/use-audio";
@@ -267,6 +267,15 @@ export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStr
           )}
         </motion.div>
       )}
+
+      {/* Leaderboard link */}
+      <motion.button
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 2.3 }}
+        onClick={() => setLocation('/leaderboard')}
+        className="flex items-center gap-1.5 px-4 py-2 rounded-xl glass-panel text-white/40 hover:text-teal-300 text-xs font-semibold transition-colors border border-white/10 hover:border-teal-400/30"
+      >
+        <Globe className="w-3.5 h-3.5" />View Global Leaderboard
+      </motion.button>
 
       {!hasClickedPlayAgain && (
         <p className="text-white/25 text-[10px] text-center -mt-1 px-4">

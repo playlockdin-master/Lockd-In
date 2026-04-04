@@ -5,14 +5,17 @@ import { useAudioSystem } from "@/hooks/use-audio";
 interface TimerProps {
   deadline: number;
   totalTime?: number;
+  frozen?: boolean; // when true: hold display at full time, don't tick or play sounds
 }
 
 const CIRCUMFERENCE = 283; // 2π × r where r ≈ 45 (matches r="45%") at viewBox 100×100
 
-export function Timer({ deadline, totalTime = 25 }: TimerProps) {
+export function Timer({ deadline, totalTime = 25, frozen = false }: TimerProps) {
   // Whole-second display value — only re-renders once per second
   const [timeLeft, setTimeLeft] = useState(() =>
-    Math.min(totalTime, Math.max(0, Math.round((deadline - Date.now()) / 1000)))
+    frozen
+      ? totalTime
+      : Math.min(totalTime, Math.max(0, Math.round((deadline - Date.now()) / 1000)))
   );
   const { playSound } = useAudioSystem();
   const lastTickedRef = useRef<number>(-1);
@@ -20,6 +23,14 @@ export function Timer({ deadline, totalTime = 25 }: TimerProps) {
   const arcRef = useRef<SVGCircleElement>(null);
 
   useEffect(() => {
+    // While frozen: snap arc to full and show totalTime, no ticking
+    if (frozen) {
+      if (arcRef.current) arcRef.current.style.strokeDashoffset = '0';
+      setTimeLeft(totalTime);
+      cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
     lastTickedRef.current = -1;
     if (!deadline) return;
 
@@ -57,7 +68,7 @@ export function Timer({ deadline, totalTime = 25 }: TimerProps) {
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [deadline, totalTime, playSound]);
+  }, [deadline, totalTime, frozen, playSound]);
 
   const isDanger = timeLeft <= 5;
 

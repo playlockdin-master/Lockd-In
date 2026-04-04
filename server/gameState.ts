@@ -20,6 +20,11 @@ import {
   TOPIC_DATASET, clearRoomCache, buildRegionContext,
   generateQuestionsForPresetMode,
 } from "./ai";
+import {
+  getSeenQuestionIds, fetchQuestionFromBank, countAvailableQuestions,
+  markQuestionSeen, createGame, upsertGamePlayer, updateGamePlayerScore,
+  finalizeGame, createGameRound, createRoundAnswers,
+} from "./storage";
 
 // ── Rate limiter ─────────────────────────────────────────────────────────────
 const rateLimitMap = new Map<string, Map<string, { count: number; windowStart: number }>>();
@@ -268,7 +273,7 @@ export function setupGameSockets(io: Server) {
     log(`Socket connected: ${socket.id}`);
 
     // ── joinRoom ──────────────────────────────────────────────────────────────
-    socket.on("joinRoom", ({ roomCode, playerName, avatarId, playerId: clientPlayerId }) => {
+    socket.on("joinRoom", ({ roomCode, playerName, avatarId, playerId: clientPlayerId, userId: clientUserId }) => {
       if (isRateLimited(socket.id, 'joinRoom')) {
         socket.emit('error', { message: 'Too many join attempts. Please wait a moment.' });
         return;
@@ -365,6 +370,10 @@ export function setupGameSockets(io: Server) {
         existingPlayer.socketId    = socket.id;
         existingPlayer.isConnected = true;
         if (cleanAvatar) existingPlayer.avatarId = cleanAvatar;
+        // Update userId if player is now logged in
+        if (typeof clientUserId === 'string' && clientUserId.length > 0) {
+          existingPlayer.userId = clientUserId;
+        }
 
         io.to(code).emit("gameState", serializeRoom(room));
         socket.emit("playerIdentity", { playerId: existingPlayer.id });
@@ -398,6 +407,7 @@ export function setupGameSockets(io: Server) {
         isReady:     false,
         isHost,
         isConnected: true,
+        userId:      (typeof clientUserId === 'string' && clientUserId.length > 0) ? clientUserId : undefined,
       };
 
       room.players.push(player);
@@ -411,6 +421,16 @@ export function setupGameSockets(io: Server) {
       // Late-joiner during a live question: sentinel excludes them from scoring
       if (room.status === 'question') {
         room.answers[playerId] = { answerIndex: -2, timeTaken: 0 };
+      }
+
+      // Phase 4 — if a game is active, register this player in the DB too
+      if (room.dbGameId) {
+        upsertGamePlayer({
+          gameId:     room.dbGameId,
+          userId:     player.userId ?? null,
+          playerName: player.name,
+          avatarId:   player.avatarId,
+        }).catch(e => warn(`upsertGamePlayer (late join) failed: ${e?.message}`));
       }
 
       io.to(code).emit("gameState", serializeRoom(room));
@@ -465,7 +485,7 @@ export function setupGameSockets(io: Server) {
     });
 
     // ── startGame ─────────────────────────────────────────────────────────────
-    socket.on("startGame", ({ mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode }) => {
+    socket.on("startGame", async ({ mode, target, topicTimeSecs, questionTimeSecs, regionMode, regionId, countryCode }) => {
       if (isRateLimited(socket.id, 'startGame')) return;
       const room   = getRoomBySocketId(socket.id);
       const player = getPlayerBySocketId(socket.id);
@@ -502,6 +522,35 @@ export function setupGameSockets(io: Server) {
 
       room.currentRound = 0;
       room.players.forEach(p => { p.score = 0; p.streak = 0; });
+
+      // Phase 4 — create game record in DB before starting first round.
+      // Bug 2 fix: awaited so room.dbGameId is guaranteed set when round 1
+      // hits proceedToResults and tries to write game_rounds / round_answers.
+      try {
+        const gameId = await createGame({
+          roomCode:   room.code,
+          mode:       room.mode,
+          target:     room.target,
+          regionMode: room.regionMode ?? 'global',
+        });
+        if (gameId) {
+          const liveRoom = rooms.get(room.code);
+          if (liveRoom) {
+            liveRoom.dbGameId = gameId;
+            for (const p of liveRoom.players) {
+              upsertGamePlayer({
+                gameId,
+                userId:     p.userId ?? null,
+                playerName: p.name,
+                avatarId:   p.avatarId,
+              }).catch(e => warn(`upsertGamePlayer failed: ${e?.message}`));
+            }
+          }
+        }
+      } catch (e: any) {
+        warn(`createGame failed: ${e?.message}`);
+        // Non-fatal — game still runs, just without DB persistence for this session
+      }
 
       if (room.topicMode === 'preset') {
         const host           = room.players.find(p => p.isHost);
@@ -985,6 +1034,10 @@ function resetRoomToLobby(room: Room, io: Server) {
   delete room.topicDeadline;
   delete room.questionDeadline;
   delete room.resultsDeadline;
+  // Bug 4 fix: clear DB game linkage so a Play Again creates a fresh game record
+  // instead of writing new rounds under the previous game's DB row.
+  delete room.dbGameId;
+  delete room.currentQuestionDbId;
   room.playAgainIds          = [];
   room.viewingResultsIds     = [];
   room.presetTopics          = {};
@@ -1131,15 +1184,66 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
   const roundSnapshot     = room.currentRound;
   const regionCtxSnapshot = buildRegionContext(room.regionMode, room.regionId, room.countryCode);
+  const regionId          = room.regionMode === 'regional' && room.regionId ? room.regionId : 'global';
 
   io.to(room.code).emit("gameState", serializeRoom(room));
 
+  // Phase 3 — try DB question bank before calling AI
+  const POOL_THRESHOLD = 5;
+  let servedFromDb = false;
+
   try {
-    const question = await generateQuestion(
+    const loggedInUserIds = room.players
+      .filter(p => p.userId)
+      .map(p => p.userId!);
+
+    const seenIds  = await getSeenQuestionIds(loggedInUserIds);
+    const available = await countAvailableQuestions(topic, regionId, seenIds);
+
+    if (available >= POOL_THRESHOLD) {
+      const dbQuestion = await fetchQuestionFromBank(topic, regionId, seenIds);
+      if (dbQuestion) {
+        const liveRoom = rooms.get(room.code);
+        if (!liveRoom || liveRoom.currentRound !== roundSnapshot || liveRoom.status !== 'question') {
+          warn(`Room ${room.code} state changed during DB fetch — discarding`);
+          return;
+        }
+
+        liveRoom.currentQuestion     = dbQuestion;
+        liveRoom.currentQuestionDbId = dbQuestion.dbId;
+        liveRoom.questionDeadline    = Date.now() + questionTimeMs(liveRoom);
+        if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
+        liveRoom.askedQuestions.push(dbQuestion.text);
+        if (dbQuestion.canonicalTopic?.trim()) liveRoom.currentTopic = dbQuestion.canonicalTopic.trim();
+
+        liveRoom.questionParticipants = liveRoom.players.map(p => p.id);
+        liveRoom.roundPlayerIds       = [...liveRoom.questionParticipants];
+
+        // Mark seen for all logged-in participants (fire-and-forget)
+        if (loggedInUserIds.length > 0) {
+          markQuestionSeen(loggedInUserIds, dbQuestion.dbId)
+            .catch(e => warn(`markQuestionSeen failed: ${e?.message}`));
+        }
+
+        io.to(room.code).emit("gameState", serializeRoom(liveRoom));
+        setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
+        log(`[db-bank] Served question for "${topic}" from DB (pool=${available})`);
+        servedFromDb = true;
+      }
+    }
+  } catch (dbErr: any) {
+    warn(`DB question bank check failed: ${dbErr?.message} — falling through to AI`);
+  }
+
+  if (servedFromDb) return;
+
+  try {
+    const { question, storePromise } = await generateQuestion(
       topic, [], room.code, undefined,
       difficultyOverride as any,
       room.askedQuestions ?? [],
       regionCtxSnapshot,
+      regionId,
     );
 
     // Post-await stale-room checks
@@ -1162,6 +1266,18 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
     // Timer runs to completion
     setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
+
+    // Bug 1 fix — capture the DB id once storeQuestion resolves so
+    // proceedToResults can link this round to the correct questions row.
+    // storePromise is fire-and-forget (never blocks question serving).
+    storePromise.then(dbId => {
+      if (!dbId) return;
+      const r = rooms.get(room.code);
+      // Only set if the room is still on the same question (same round, still in question phase)
+      if (r && r.currentRound === roundSnapshot && r.status === 'question') {
+        r.currentQuestionDbId = dbId;
+      }
+    });
 
   } catch (error: any) {
     const liveRoom = rooms.get(room.code);
@@ -1192,10 +1308,11 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
       io.to(room.code).emit("gameState", serializeRoom(room));
 
       try {
-        const q2 = await generateQuestion(
+        const { question: q2, storePromise: storePromise2 } = await generateQuestion(
           replacementTopic, [], room.code, undefined, undefined,
           room.askedQuestions ?? [],
           buildRegionContext(stillLive.regionMode, stillLive.regionId, stillLive.countryCode),
+          stillLive.regionId ?? 'global',
         );
         const afterGen = rooms.get(room.code);
         if (!afterGen || afterGen.currentRound !== roundSnapshot) return;
@@ -1208,6 +1325,15 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
         io.to(room.code).emit("gameState", serializeRoom(afterGen));
         setRoomTimer(room.code, () => { proceedToResults(afterGen, io); }, questionTimeMs(afterGen));
+
+        // Bug 1 fix — capture DB id for this fallback AI question
+        storePromise2.then(dbId => {
+          if (!dbId) return;
+          const r = rooms.get(room.code);
+          if (r && r.currentRound === roundSnapshot && r.status === 'question') {
+            r.currentQuestionDbId = dbId;
+          }
+        });
       } catch (innerErr) {
         err(`Failed to generate fallback question: ${innerErr}`);
         const lff = rooms.get(room.code);
@@ -1250,10 +1376,12 @@ function proceedToResults(room: Room, io: Server) {
   // we still mark their answer as timed-out but skip scoring — they're gone)
   const participants = new Set(room.questionParticipants ?? room.players.map(p => p.id));
 
-  // Auto-submit timed-out answers for all participants who didn't answer
+  // Auto-submit timed-out answers for all participants who didn't answer.
+  // Bug 5 fix: -2 means "absent late-joiner" — preserve it, don't overwrite with -1 (timed-out).
+  // Only fill in -1 for participants who were present but never submitted.
   for (const pid of Array.from(participants)) {
     const existing = room.answers[pid];
-    if (!existing || existing.answerIndex < 0) {
+    if (!existing || (existing.answerIndex !== -2 && existing.answerIndex < 0)) {
       room.answers[pid] = { answerIndex: -1, timeTaken: 0 }; // timed-out sentinel
     }
   }
@@ -1318,6 +1446,53 @@ function proceedToResults(room: Room, io: Server) {
     room.roundHistory.push(record);
   }
 
+  // Phase 3 + 4 — capture questionDbId before any clearing, used for both markQuestionSeen and game round
+  const questionDbId = room.currentQuestionDbId;
+  room.currentQuestionDbId = undefined; // clear for next round
+
+  // Phase 3 — mark question as seen for logged-in participants
+  // For DB-bank questions markQuestionSeen is called immediately in proceedToQuestion (dedup-safe)
+  // For AI-generated questions (storeQuestion is async) we mark here once DB write completes
+  if (questionDbId) {
+    const loggedInUserIds = room.players
+      .filter(p => p.userId && participants.has(p.id))
+      .map(p => p.userId!);
+    if (loggedInUserIds.length > 0) {
+      markQuestionSeen(loggedInUserIds, questionDbId)
+        .catch(e => warn(`markQuestionSeen (results) failed: ${e?.message}`));
+    }
+  }
+
+  // Phase 4 — write game round + answers to DB (fire-and-forget)
+  if (room.dbGameId && room.currentTopic) {
+    const gameId      = room.dbGameId;
+    const roundNumber = room.currentRound;
+    const topic       = room.currentTopic;
+
+    const answerRows = Array.from(participants).map(pid => {
+      const player       = room.players.find(p => p.id === pid);
+      const answer       = room.answers[pid];
+      const answerIndex  = answer?.answerIndex ?? -1;
+      const wasCorrect   = answerIndex === correctIndex && answerIndex >= 0;
+      const pointsEarned = player?.lastPoints ?? 0;
+      return {
+        userId:       player?.userId ?? null,
+        answerIndex,
+        timeTaken:    answer?.timeTaken ?? 0,
+        wasCorrect,
+        pointsEarned,
+      };
+    });
+
+    createGameRound({ gameId, questionId: questionDbId, roundNumber, topic })
+      .then(roundId => {
+        if (roundId && answerRows.length > 0) {
+          return createRoundAnswers(roundId, answerRows);
+        }
+      })
+      .catch(e => warn(`createGameRound/createRoundAnswers failed: ${e?.message}`));
+  }
+
   io.to(room.code).emit("gameState", serializeRoom(room));
 
   // Results timer runs to completion — game engine drives next phase
@@ -1366,6 +1541,18 @@ function endGame(room: Room, io: Server) {
   room.viewingResultsIds = room.players.map(p => p.id);
   clearRoomTimer(room.code); // no more game-phase timers
   io.to(room.code).emit("gameState", serializeRoom(room));
+
+  // Phase 4 — finalize game + update player scores in DB (fire-and-forget)
+  if (room.dbGameId) {
+    const gameId = room.dbGameId;
+    finalizeGame(gameId).catch(e => warn(`finalizeGame failed: ${e?.message}`));
+    for (const p of room.players) {
+      const bestStreak = Math.max(p.streak, 0);
+      updateGamePlayerScore(gameId, p.name, p.score, bestStreak)
+        .catch(e => warn(`updateGamePlayerScore failed: ${e?.message}`));
+    }
+  }
+
   scheduleEndedRoomCleanup(room, io);
 }
 

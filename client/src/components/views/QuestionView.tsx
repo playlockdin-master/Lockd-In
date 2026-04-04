@@ -12,9 +12,10 @@ interface Props {
   me: Player;
   onSubmitAnswer: (index: number) => void;
   topicRejection?: { badTopic: string; reason: string; newTopic: string } | null;
+  overlayVisible?: boolean; // true while RoundTransition overlay is showing — freezes the timer
 }
 
-export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props) {
+export function QuestionView({ room, me, onSubmitAnswer, topicRejection, overlayVisible = false }: Props) {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const { playSound } = useAudioSystem();
   // Respect prefers-reduced-motion — Framer Motion's repeat:Infinity
@@ -186,7 +187,7 @@ export function QuestionView({ room, me, onSubmitAnswer, topicRejection }: Props
             : <><TrendingDown className="w-3 h-3" />#{myRank}</>}
         </span>
         <div className="ml-auto shrink-0">
-          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 25} />
+          <Timer deadline={room.questionDeadline!} totalTime={room.questionTimeSecs ?? 25} frozen={overlayVisible} />
         </div>
       </div>
 
