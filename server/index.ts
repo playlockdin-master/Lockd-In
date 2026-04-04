@@ -16,10 +16,23 @@ app.use(express.urlencoded({ extended: false }));
 // ── Session middleware ────────────────────────────────────────────────────────
 const PgSession = connectPgSimple(session);
 
+let sessionStore: session.Store | undefined;
+if (pool) {
+  try {
+    sessionStore = new PgSession({
+      pool,
+      tableName: "user_sessions",
+      createTableIfMissing: true,
+    });
+    console.log("[session] Using Postgres session store");
+  } catch (e: any) {
+    console.warn("[session] Failed to create Postgres store, falling back to memory:", e?.message);
+    sessionStore = undefined;
+  }
+}
+
 app.use(session({
-  store: pool
-    ? new PgSession({ pool, tableName: "user_sessions", createTableIfMissing: true })
-    : undefined,
+  store:             sessionStore,
   secret:            process.env.SESSION_SECRET || "dev-secret-change-in-prod",
   resave:            false,
   saveUninitialized: false,

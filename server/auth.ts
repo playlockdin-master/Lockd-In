@@ -83,7 +83,11 @@ authRouter.get("/google", (req: Request, res: Response) => {
   });
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   req.session.save((err) => {
-    if (err) { res.status(500).json({ message: "Session error" }); return; }
+    if (err) {
+      console.error("[auth] Session save error:", err);
+      res.status(500).json({ message: "Session error", detail: String(err) });
+      return;
+    }
     res.redirect(url);
   });
 });
