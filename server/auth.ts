@@ -81,7 +81,11 @@ authRouter.get("/google", (req: Request, res: Response) => {
     state,
     access_type:   "online",
   });
-  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  req.session.save((err) => {
+    if (err) { res.status(500).json({ message: "Session error" }); return; }
+    res.redirect(url);
+  });
 });
 
 // GET /auth/google/callback
