@@ -19,11 +19,17 @@ const PgSession = connectPgSimple(session);
 let sessionStore: session.Store | undefined;
 if (pool) {
   try {
-    sessionStore = new PgSession({
-      pool,
-      tableName: "user_sessions",
-      createTableIfMissing: true,
-    });
+    // Create session table manually — avoids connect-pg-simple needing table.sql at runtime
+    pool.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        sid   VARCHAR NOT NULL COLLATE "default",
+        sess  JSON    NOT NULL,
+        expire TIMESTAMP(6) NOT NULL,
+        CONSTRAINT session_pkey PRIMARY KEY (sid)
+      )
+    `).catch((e: any) => console.warn("[session] Table create warning:", e?.message));
+
+    sessionStore = new PgSession({ pool, tableName: "user_sessions" });
     console.log("[session] Using Postgres session store");
   } catch (e: any) {
     console.warn("[session] Failed to create Postgres store, falling back to memory:", e?.message);
