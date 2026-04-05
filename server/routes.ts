@@ -194,20 +194,24 @@ export async function registerRoutes(
 
     try {
       if (period === "alltime") {
-        // Fast path — use pre-aggregated user_stats
+        // Query game_players directly (same source as the other periods)
+        // so alltime is always consistent with what daily/weekly/monthly show.
+        // Avoids any user_stats sync issues.
         const rows = await db
           .select({
-            userId:     users.id,
+            userId:     gamePlayers.userId,
             username:   users.username,
             avatarId:   users.avatarId,
-            totalScore: userStats.totalScore,
-            totalGames: userStats.totalGames,
-            bestStreak: userStats.bestStreak,
+            totalScore: sql<number>`cast(sum(${gamePlayers.finalScore}) as int)`,
+            totalGames: sql<number>`cast(count(distinct ${gamePlayers.gameId}) as int)`,
+            bestStreak: sql<number>`cast(max(${gamePlayers.bestStreak}) as int)`,
           })
-          .from(userStats)
-          .innerJoin(users, eq(userStats.userId, users.id))
-          .where(sql`${userStats.totalScore} > 0`)
-          .orderBy(desc(userStats.totalScore))
+          .from(gamePlayers)
+          .innerJoin(games, eq(gamePlayers.gameId, games.id))
+          .innerJoin(users, eq(gamePlayers.userId, users.id))
+          .where(sql`${gamePlayers.userId} is not null`)
+          .groupBy(gamePlayers.userId, users.id)
+          .orderBy(desc(sql`sum(${gamePlayers.finalScore})`))
           .limit(50);
         res.json({ leaderboard: rows, period });
         return;
