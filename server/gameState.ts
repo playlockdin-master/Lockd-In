@@ -404,6 +404,7 @@ export function setupGameSockets(io: Server) {
         avatarId:    cleanAvatar,
         score:       0,
         streak:      0,
+        bestStreak:  0,
         isReady:     false,
         isHost,
         isConnected: true,
@@ -1045,7 +1046,7 @@ function resetRoomToLobby(room: Room, io: Server) {
   // topicMode intentionally preserved — keep host's preference across play-agains
 
   room.players.forEach(p => {
-    p.score = 0; p.streak = 0; p.isReady = false;
+    p.score = 0; p.streak = 0; p.bestStreak = 0; p.isReady = false;
     delete p.lastAnswer; delete p.lastAnswerCorrect; delete p.lastPoints;
   });
 
@@ -1382,6 +1383,7 @@ function proceedToResults(room: Room, io: Server) {
 
     if (isCorrect) {
       player.streak++;
+      if (player.streak > (player.bestStreak ?? 0)) player.bestStreak = player.streak;
       const base       = Math.floor(75 * diffMultiplier);
       const timeMult   = Math.max(0, answer.timeTaken / questionTimeMs(room));
       const speedBonus = Math.floor(40 * timeMult);
@@ -1500,7 +1502,7 @@ function endGame(room: Room, io: Server) {
     const gameId = room.dbGameId;
     finalizeGame(gameId).catch(e => warn(`finalizeGame failed: ${e?.message}`));
     for (const p of room.players) {
-      const bestStreak = Math.max(p.streak, 0);
+      const bestStreak = Math.max(p.bestStreak ?? p.streak, 0);
       updateGamePlayerScore(gameId, p.name, p.score, bestStreak)
         .catch(e => warn(`updateGamePlayerScore failed: ${e?.message}`));
     }
@@ -1534,7 +1536,7 @@ function endGame(room: Room, io: Server) {
         upsertUserStats(userId, {
           totalCorrect,
           totalAnswered,
-          bestStreak: Math.max(p.streak, 0),
+          bestStreak: Math.max(p.bestStreak ?? p.streak, 0),
           totalScore: p.score,
         }).catch(e => warn(`upsertUserStats failed for ${userId}: ${e?.message}`));
 

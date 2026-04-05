@@ -154,25 +154,28 @@ export async function upsertUserStats(
   stats: { totalCorrect: number; totalAnswered: number; bestStreak: number; totalScore: number },
 ): Promise<void> {
   if (!hasDb(db) || !userId) return;
-  await db.execute(sql`
-    INSERT INTO user_stats (user_id, total_games, total_correct, total_answered, best_streak, total_score, updated_at)
-    VALUES (
-      ${userId}::uuid,
-      1,
-      ${stats.totalCorrect},
-      ${stats.totalAnswered},
-      ${stats.bestStreak},
-      ${stats.totalScore},
-      NOW()
-    )
-    ON CONFLICT (user_id) DO UPDATE SET
-      total_games    = user_stats.total_games + 1,
-      total_correct  = user_stats.total_correct + EXCLUDED.total_correct,
-      total_answered = user_stats.total_answered + EXCLUDED.total_answered,
-      best_streak    = GREATEST(user_stats.best_streak, EXCLUDED.best_streak),
-      total_score    = user_stats.total_score + EXCLUDED.total_score,
-      updated_at     = NOW()
-  `);
+  await db
+    .insert(userStats)
+    .values({
+      userId,
+      totalGames:    1,
+      totalCorrect:  stats.totalCorrect,
+      totalAnswered: stats.totalAnswered,
+      bestStreak:    stats.bestStreak,
+      totalScore:    stats.totalScore,
+      updatedAt:     new Date(),
+    })
+    .onConflictDoUpdate({
+      target: userStats.userId,
+      set: {
+        totalGames:    sql`${userStats.totalGames} + 1`,
+        totalCorrect:  sql`${userStats.totalCorrect} + EXCLUDED.total_correct`,
+        totalAnswered: sql`${userStats.totalAnswered} + EXCLUDED.total_answered`,
+        bestStreak:    sql`GREATEST(${userStats.bestStreak}, EXCLUDED.best_streak)`,
+        totalScore:    sql`${userStats.totalScore} + EXCLUDED.total_score`,
+        updatedAt:     new Date(),
+      },
+    });
 }
 
 /**
@@ -186,15 +189,23 @@ export async function upsertUserTopicStats(
   const entries = Object.entries(topicTally);
   if (entries.length === 0) return;
 
-  for (const [topic, counts] of entries) {
-    await db.execute(sql`
-      INSERT INTO user_topic_stats (user_id, topic, total_answered, total_correct)
-      VALUES (${userId}::uuid, ${topic}, ${counts.answered}, ${counts.correct})
-      ON CONFLICT (user_id, topic) DO UPDATE SET
-        total_answered = user_topic_stats.total_answered + EXCLUDED.total_answered,
-        total_correct  = user_topic_stats.total_correct + EXCLUDED.total_correct
-    `);
-  }
+  const rows = entries.map(([topic, counts]) => ({
+    userId,
+    topic,
+    totalAnswered: counts.answered,
+    totalCorrect:  counts.correct,
+  }));
+
+  await db
+    .insert(userTopicStats)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [userTopicStats.userId, userTopicStats.topic],
+      set: {
+        totalAnswered: sql`${userTopicStats.totalAnswered} + EXCLUDED.total_answered`,
+        totalCorrect:  sql`${userTopicStats.totalCorrect} + EXCLUDED.total_correct`,
+      },
+    });
 }
 
 /**

@@ -272,6 +272,7 @@ export interface Player {
   avatarId: string;
   score: number;
   streak: number;
+  bestStreak: number; // peak streak reached during this game — never resets
   isReady: boolean;
   isHost: boolean;
   isConnected: boolean;
