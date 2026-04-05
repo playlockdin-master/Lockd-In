@@ -7,7 +7,7 @@ import { ParticleBackground } from "@/components/ParticleBackground";
 import { AudioController } from "@/components/AudioController";
 import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gamepad2, Hash, User, Ban, LogIn, CheckCircle, Trophy } from "lucide-react";
+import { Gamepad2, Hash, User, Ban, CheckCircle, Trophy } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 import { useAuth } from "@/hooks/use-auth";
@@ -269,16 +269,6 @@ export default function Home() {
               </div>
 
               {/* Sign in prompt for guests */}
-              {!user && !loading && (
-                <motion.button
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  onClick={login}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border border-white/10 hover:border-teal-400/40 text-white/50 hover:text-white/80 text-sm transition-all glass-panel"
-                >
-                  <LogIn className="w-4 h-4" />
-                  Sign in to save your stats & avoid question repeats
-                </motion.button>
-              )}
 
               {/* Actions */}
               <div className="pt-4 border-t border-white/10 space-y-4">
@@ -303,7 +293,7 @@ export default function Home() {
                       error={codeError || undefined}
                     />
                   </div>
-                  <Button variant="secondary" onClick={() => handleAction("join")} className="px-8 self-start">Join</Button>
+                  <Button variant="secondary" onClick={() => handleAction("join")} className="px-8 self-center">Join</Button>
                 </div>
               </div>
             </div>
