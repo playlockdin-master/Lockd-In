@@ -21,9 +21,9 @@ import {
   generateQuestionsForPresetMode,
 } from "./ai";
 import {
-  getSeenQuestionIds, fetchQuestionFromBank, countAvailableQuestions,
-  markQuestionSeen, createGame, upsertGamePlayer, updateGamePlayerScore,
-  finalizeGame, createGameRound, createRoundAnswers,
+  fetchQuestionFromBank,
+  createGame, upsertGamePlayer, updateGamePlayerScore,
+  finalizeGame, upsertUserStats, upsertUserTopicStats, updateQuestionStats,
 } from "./storage";
 
 // ── Rate limiter ─────────────────────────────────────────────────────────────
@@ -1189,47 +1189,31 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
   io.to(room.code).emit("gameState", serializeRoom(room));
 
   // Phase 3 — try DB question bank before calling AI
-  const POOL_THRESHOLD = 5;
   let servedFromDb = false;
 
   try {
-    const loggedInUserIds = room.players
-      .filter(p => p.userId)
-      .map(p => p.userId!);
-
-    const seenIds  = await getSeenQuestionIds(loggedInUserIds);
-    const available = await countAvailableQuestions(topic, regionId, seenIds);
-
-    if (available >= POOL_THRESHOLD) {
-      const dbQuestion = await fetchQuestionFromBank(topic, regionId, seenIds);
-      if (dbQuestion) {
-        const liveRoom = rooms.get(room.code);
-        if (!liveRoom || liveRoom.currentRound !== roundSnapshot || liveRoom.status !== 'question') {
-          warn(`Room ${room.code} state changed during DB fetch — discarding`);
-          return;
-        }
-
-        liveRoom.currentQuestion     = dbQuestion;
-        liveRoom.currentQuestionDbId = dbQuestion.dbId;
-        liveRoom.questionDeadline    = Date.now() + questionTimeMs(liveRoom);
-        if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
-        liveRoom.askedQuestions.push(dbQuestion.text);
-        if (dbQuestion.canonicalTopic?.trim()) liveRoom.currentTopic = dbQuestion.canonicalTopic.trim();
-
-        liveRoom.questionParticipants = liveRoom.players.map(p => p.id);
-        liveRoom.roundPlayerIds       = [...liveRoom.questionParticipants];
-
-        // Mark seen for all logged-in participants (fire-and-forget)
-        if (loggedInUserIds.length > 0) {
-          markQuestionSeen(loggedInUserIds, dbQuestion.dbId)
-            .catch(e => warn(`markQuestionSeen failed: ${e?.message}`));
-        }
-
-        io.to(room.code).emit("gameState", serializeRoom(liveRoom));
-        setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
-        log(`[db-bank] Served question for "${topic}" from DB (pool=${available})`);
-        servedFromDb = true;
+    const dbQuestion = await fetchQuestionFromBank(topic, regionId);
+    if (dbQuestion) {
+      const liveRoom = rooms.get(room.code);
+      if (!liveRoom || liveRoom.currentRound !== roundSnapshot || liveRoom.status !== 'question') {
+        warn(`Room ${room.code} state changed during DB fetch — discarding`);
+        return;
       }
+
+      liveRoom.currentQuestion     = dbQuestion;
+      liveRoom.currentQuestionDbId = dbQuestion.dbId;
+      liveRoom.questionDeadline    = Date.now() + questionTimeMs(liveRoom);
+      if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
+      liveRoom.askedQuestions.push(dbQuestion.text);
+      if (dbQuestion.canonicalTopic?.trim()) liveRoom.currentTopic = dbQuestion.canonicalTopic.trim();
+
+      liveRoom.questionParticipants = liveRoom.players.map(p => p.id);
+      liveRoom.roundPlayerIds       = [...liveRoom.questionParticipants];
+
+      io.to(room.code).emit("gameState", serializeRoom(liveRoom));
+      setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
+      log(`[db-bank] Served question for "${topic}" from DB`);
+      servedFromDb = true;
     }
   } catch (dbErr: any) {
     warn(`DB question bank check failed: ${dbErr?.message} — falling through to AI`);
@@ -1446,51 +1430,20 @@ function proceedToResults(room: Room, io: Server) {
     room.roundHistory.push(record);
   }
 
-  // Phase 3 + 4 — capture questionDbId before any clearing, used for both markQuestionSeen and game round
+  // Capture and clear questionDbId for per-question stats update
   const questionDbId = room.currentQuestionDbId;
-  room.currentQuestionDbId = undefined; // clear for next round
+  room.currentQuestionDbId = undefined;
 
-  // Phase 3 — mark question as seen for logged-in participants
-  // For DB-bank questions markQuestionSeen is called immediately in proceedToQuestion (dedup-safe)
-  // For AI-generated questions (storeQuestion is async) we mark here once DB write completes
+  // Per-question stats — count served and correct for this round (fire-and-forget)
   if (questionDbId) {
-    const loggedInUserIds = room.players
-      .filter(p => p.userId && participants.has(p.id))
-      .map(p => p.userId!);
-    if (loggedInUserIds.length > 0) {
-      markQuestionSeen(loggedInUserIds, questionDbId)
-        .catch(e => warn(`markQuestionSeen (results) failed: ${e?.message}`));
-    }
-  }
-
-  // Phase 4 — write game round + answers to DB (fire-and-forget)
-  if (room.dbGameId && room.currentTopic) {
-    const gameId      = room.dbGameId;
-    const roundNumber = room.currentRound;
-    const topic       = room.currentTopic;
-
-    const answerRows = Array.from(participants).map(pid => {
-      const player       = room.players.find(p => p.id === pid);
-      const answer       = room.answers[pid];
-      const answerIndex  = answer?.answerIndex ?? -1;
-      const wasCorrect   = answerIndex === correctIndex && answerIndex >= 0;
-      const pointsEarned = player?.lastPoints ?? 0;
-      return {
-        userId:       player?.userId ?? null,
-        answerIndex,
-        timeTaken:    answer?.timeTaken ?? 0,
-        wasCorrect,
-        pointsEarned,
-      };
-    });
-
-    createGameRound({ gameId, questionId: questionDbId, roundNumber, topic })
-      .then(roundId => {
-        if (roundId && answerRows.length > 0) {
-          return createRoundAnswers(roundId, answerRows);
-        }
-      })
-      .catch(e => warn(`createGameRound/createRoundAnswers failed: ${e?.message}`));
+    const participantList = Array.from(participants);
+    const served  = participantList.length;
+    const correct = participantList.filter(pid => {
+      const a = room.answers[pid];
+      return a && a.answerIndex === correctIndex && a.answerIndex >= 0;
+    }).length;
+    updateQuestionStats([{ questionId: questionDbId, served, correct }])
+      .catch(e => warn(`updateQuestionStats failed: ${e?.message}`));
   }
 
   io.to(room.code).emit("gameState", serializeRoom(room));
@@ -1550,6 +1503,44 @@ function endGame(room: Room, io: Server) {
       const bestStreak = Math.max(p.streak, 0);
       updateGamePlayerScore(gameId, p.name, p.score, bestStreak)
         .catch(e => warn(`updateGamePlayerScore failed: ${e?.message}`));
+    }
+  }
+
+  // Per-player aggregate stats — fire-and-forget for all logged-in players
+  if (room.roundHistory && room.roundHistory.length > 0) {
+    for (const p of room.players) {
+      if (!p.userId) continue; // skip guests
+
+      const userId = p.userId;
+      let totalCorrect  = 0;
+      let totalAnswered = 0;
+      const topicTally: Record<string, { answered: number; correct: number }> = {};
+
+      for (const round of room.roundHistory) {
+        const answerIndex = round.playerAnswers[p.id];
+        // -2 = absent late-joiner; -1 = timed out; anything else is a real answer
+        if (answerIndex === undefined || answerIndex === -2) continue;
+
+        totalAnswered++;
+        const isCorrect = answerIndex === round.correctIndex && answerIndex >= 0;
+        if (isCorrect) totalCorrect++;
+
+        if (!topicTally[round.topic]) topicTally[round.topic] = { answered: 0, correct: 0 };
+        topicTally[round.topic].answered++;
+        if (isCorrect) topicTally[round.topic].correct++;
+      }
+
+      if (totalAnswered > 0) {
+        upsertUserStats(userId, {
+          totalCorrect,
+          totalAnswered,
+          bestStreak: Math.max(p.streak, 0),
+          totalScore: p.score,
+        }).catch(e => warn(`upsertUserStats failed for ${userId}: ${e?.message}`));
+
+        upsertUserTopicStats(userId, topicTally)
+          .catch(e => warn(`upsertUserTopicStats failed for ${userId}: ${e?.message}`));
+      }
     }
   }
 

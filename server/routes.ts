@@ -2,8 +2,9 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { setupGameSockets } from "./gameState";
-import { db, users, gamePlayers, gameRounds, roundAnswers, games } from "./db";
-import { eq, and, sql, desc, isNotNull } from "drizzle-orm";
+import { db, users, gamePlayers, games } from "./db";
+import { userStats, userTopicStats } from "@shared/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -38,42 +39,38 @@ export async function registerRoutes(
   /**
    * GET /api/player/:userId/stats
    * Total games, accuracy, best streak, total score for a user.
+   * Single row lookup on user_stats.
    */
   app.get("/api/player/:userId/stats", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
     try {
       const { userId } = req.params;
 
-      const gpRows = await db
-        .select({
-          totalGames: sql<number>`count(distinct ${gamePlayers.gameId})::int`,
-          totalScore: sql<number>`coalesce(sum(${gamePlayers.finalScore}), 0)::int`,
-          bestStreak: sql<number>`coalesce(max(${gamePlayers.bestStreak}), 0)::int`,
-        })
-        .from(gamePlayers)
-        .where(eq(gamePlayers.userId, userId));
+      const rows = await db
+        .select()
+        .from(userStats)
+        .where(eq(userStats.userId, userId))
+        .limit(1);
 
-      const raRows = await db
-        .select({
-          totalAnswered: sql<number>`count(*)::int`,
-          totalCorrect:  sql<number>`coalesce(sum(case when ${roundAnswers.wasCorrect} then 1 else 0 end), 0)::int`,
-        })
-        .from(roundAnswers)
-        .where(eq(roundAnswers.userId, userId));
+      const row = rows[0];
+      if (!row) {
+        res.json({
+          totalGames: 0, totalScore: 0, bestStreak: 0,
+          totalAnswered: 0, totalCorrect: 0, accuracy: 0,
+        });
+        return;
+      }
 
-      const gp = gpRows[0] ?? { totalGames: 0, totalScore: 0, bestStreak: 0 };
-      const ra = raRows[0] ?? { totalAnswered: 0, totalCorrect: 0 };
-
-      const accuracy = ra.totalAnswered > 0
-        ? Math.round((ra.totalCorrect / ra.totalAnswered) * 100)
+      const accuracy = row.totalAnswered > 0
+        ? Math.round((row.totalCorrect / row.totalAnswered) * 100)
         : 0;
 
       res.json({
-        totalGames:    gp.totalGames,
-        totalScore:    gp.totalScore,
-        bestStreak:    gp.bestStreak,
-        totalAnswered: ra.totalAnswered,
-        totalCorrect:  ra.totalCorrect,
+        totalGames:    row.totalGames,
+        totalScore:    row.totalScore,
+        bestStreak:    row.bestStreak,
+        totalAnswered: row.totalAnswered,
+        totalCorrect:  row.totalCorrect,
         accuracy,
       });
     } catch (err) {
@@ -84,7 +81,7 @@ export async function registerRoutes(
 
   /**
    * GET /api/player/:userId/topics
-   * Per-topic accuracy, questions answered.
+   * Per-topic accuracy, questions answered — from user_topic_stats.
    */
   app.get("/api/player/:userId/topics", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
@@ -92,16 +89,10 @@ export async function registerRoutes(
       const { userId } = req.params;
 
       const rows = await db
-        .select({
-          topic:         gameRounds.topic,
-          totalAnswered: sql<number>`count(*)::int`,
-          totalCorrect:  sql<number>`coalesce(sum(case when ${roundAnswers.wasCorrect} then 1 else 0 end), 0)::int`,
-        })
-        .from(roundAnswers)
-        .innerJoin(gameRounds, eq(roundAnswers.roundId, gameRounds.id))
-        .where(eq(roundAnswers.userId, userId))
-        .groupBy(gameRounds.topic)
-        .orderBy(desc(sql`count(*)`));
+        .select()
+        .from(userTopicStats)
+        .where(eq(userTopicStats.userId, userId))
+        .orderBy(desc(userTopicStats.totalAnswered));
 
       const topics = rows.map(r => ({
         topic:         r.topic,
@@ -122,16 +113,12 @@ export async function registerRoutes(
   /**
    * GET /api/player/:userId/games
    * Last 20 games with final score, rank, and player count.
-   *
-   * N+1 fix: rank and player count computed with a single window-function
-   * query instead of one extra DB round-trip per game row.
    */
   app.get("/api/player/:userId/games", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
     try {
       const { userId } = req.params;
 
-      // Step 1: fetch the user's last 20 games
       const rows = await db
         .select({
           gameId:     gamePlayers.gameId,
@@ -154,8 +141,6 @@ export async function registerRoutes(
         return;
       }
 
-      // Step 2: single query — rank + player count for all game ids at once
-      // using window functions, avoiding N+1 (one query per game).
       const gameIds = rows.map(r => `'${r.gameId}'`).join(',');
       const rankRows = await db!
         .select({
@@ -167,7 +152,6 @@ export async function registerRoutes(
         .from(gamePlayers)
         .where(sql`${gamePlayers.gameId} = any(array[${sql.raw(gameIds)}]::uuid[])`);
 
-      // Build a lookup: gameId → { rank, playerCount } for this user
       const rankMap = new Map<string, { rank: number; playerCount: number }>();
       for (const r of rankRows) {
         if (r.userId === userId) {
@@ -200,7 +184,7 @@ export async function registerRoutes(
 
   /**
    * GET /api/leaderboard/global
-   * Top 50 players by total score.
+   * Top 50 players by total score — joins user_stats + users.
    */
   app.get("/api/leaderboard/global", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
@@ -210,15 +194,13 @@ export async function registerRoutes(
           userId:     users.id,
           username:   users.username,
           avatarId:   users.avatarId,
-          totalScore: sql<number>`coalesce(sum(${gamePlayers.finalScore}), 0)::int`,
-          totalGames: sql<number>`count(distinct ${gamePlayers.gameId})::int`,
-          bestStreak: sql<number>`coalesce(max(${gamePlayers.bestStreak}), 0)::int`,
+          totalScore: userStats.totalScore,
+          totalGames: userStats.totalGames,
+          bestStreak: userStats.bestStreak,
         })
-        .from(gamePlayers)
-        .innerJoin(users, eq(gamePlayers.userId, users.id))
-        .where(isNotNull(gamePlayers.userId))
-        .groupBy(users.id, users.username, users.avatarId)
-        .orderBy(desc(sql`sum(${gamePlayers.finalScore})`))
+        .from(userStats)
+        .innerJoin(users, eq(userStats.userId, users.id))
+        .orderBy(desc(userStats.totalScore))
         .limit(50);
 
       res.json({ leaderboard: rows });
@@ -229,26 +211,22 @@ export async function registerRoutes(
   });
 
   // IMPORTANT: /api/leaderboard/topics must stay ABOVE /api/leaderboard/topic/:topic.
-  // If reversed, Express matches the literal word "topics" as the :topic param
-  // and this route never fires.
 
   /**
    * GET /api/leaderboard/topics
-   * Topics that have enough data for a leaderboard tab.
+   * Distinct topics from user_topic_stats with enough data (min 5 answered).
    */
   app.get("/api/leaderboard/topics", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
     try {
       const rows = await db
         .select({
-          topic: gameRounds.topic,
+          topic: userTopicStats.topic,
           count: sql<number>`count(*)::int`,
         })
-        .from(roundAnswers)
-        .innerJoin(gameRounds, eq(roundAnswers.roundId, gameRounds.id))
-        .where(isNotNull(roundAnswers.userId))
-        .groupBy(gameRounds.topic)
-        .having(sql`count(*) >= 5`)
+        .from(userTopicStats)
+        .where(sql`${userTopicStats.totalAnswered} >= 5`)
+        .groupBy(userTopicStats.topic)
         .orderBy(desc(sql`count(*)`))
         .limit(30);
 
@@ -261,7 +239,7 @@ export async function registerRoutes(
 
   /**
    * GET /api/leaderboard/topic/:topic
-   * Top 20 players by accuracy on a specific topic (min 5 questions).
+   * Top 20 players by accuracy on a specific topic (min 5 questions answered).
    */
   app.get("/api/leaderboard/topic/:topic", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
@@ -270,26 +248,23 @@ export async function registerRoutes(
 
       const rows = await db
         .select({
-          userId:        roundAnswers.userId,
+          userId:        userTopicStats.userId,
           username:      users.username,
           avatarId:      users.avatarId,
-          totalAnswered: sql<number>`count(*)::int`,
-          totalCorrect:  sql<number>`coalesce(sum(case when ${roundAnswers.wasCorrect} then 1 else 0 end), 0)::int`,
+          totalAnswered: userTopicStats.totalAnswered,
+          totalCorrect:  userTopicStats.totalCorrect,
         })
-        .from(roundAnswers)
-        .innerJoin(gameRounds, eq(roundAnswers.roundId, gameRounds.id))
-        .innerJoin(users, eq(roundAnswers.userId, users.id))
+        .from(userTopicStats)
+        .innerJoin(users, eq(userTopicStats.userId, users.id))
         .where(
           and(
-            sql`lower(${gameRounds.topic}) = lower(${topic})`,
-            isNotNull(roundAnswers.userId)
+            sql`lower(${userTopicStats.topic}) = lower(${topic})`,
+            sql`${userTopicStats.totalAnswered} >= 5`,
           )
         )
-        .groupBy(roundAnswers.userId, users.username, users.avatarId)
-        .having(sql`count(*) >= 5`)
         .orderBy(
-          desc(sql`sum(case when ${roundAnswers.wasCorrect} then 1 else 0 end)::float / count(*)`),
-          desc(sql`count(*)`)
+          desc(sql`${userTopicStats.totalCorrect}::float / ${userTopicStats.totalAnswered}`),
+          desc(userTopicStats.totalAnswered),
         )
         .limit(20);
 
@@ -299,8 +274,6 @@ export async function registerRoutes(
         avatarId:      r.avatarId,
         totalAnswered: r.totalAnswered,
         totalCorrect:  r.totalCorrect,
-        // Division-by-zero guard: HAVING count(*) >= 5 makes this safe in practice,
-        // but guard explicitly in case of unexpected type coercion from Postgres.
         accuracy:      r.totalAnswered > 0
           ? Math.round((r.totalCorrect / r.totalAnswered) * 100)
           : 0,

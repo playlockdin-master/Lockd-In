@@ -1,5 +1,6 @@
-import { eq, and, inArray, sql, notInArray } from "drizzle-orm";
-import { db, users, questions, games, gamePlayers, gameRounds, roundAnswers, playerSeenQuestions } from "./db";
+import crypto from 'crypto';
+import { eq, and, sql } from "drizzle-orm";
+import { db, users, questions, games, gamePlayers, userStats, userTopicStats } from "./db";
 import type { Question } from "@shared/schema";
 
 // ── Type exports used by gameState and auth ───────────────────────────────────
@@ -53,18 +54,24 @@ export async function touchUserLastSeen(id: string): Promise<void> {
 // QUESTION BANK METHODS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Store a newly AI-generated question in the bank. */
+/** Store a newly AI-generated question in the bank. Returns empty string on duplicate. */
 export async function storeQuestion(
   q: Question,
   rawTopic: string,
   region: string,
 ): Promise<string> {
   if (!hasDb(db)) return "";
+
+  // Compute normalised MD5 hash for deduplication
+  const normalised = q.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const textHash = crypto.createHash('md5').update(normalised).digest('hex');
+  const canonicalTopic = q.canonicalTopic ?? rawTopic;
+
   const rows = await db
     .insert(questions)
     .values({
       topic:          rawTopic,
-      canonicalTopic: q.canonicalTopic ?? rawTopic,
+      canonicalTopic,
       text:           q.text,
       options:        q.options,
       correctIndex:   q.correctIndex,
@@ -72,41 +79,57 @@ export async function storeQuestion(
       difficulty:     q.difficulty,
       region,
       isActive:       true,
+      textHash,
     })
+    .onConflictDoNothing()
     .returning({ id: questions.id });
+
+  // Returns empty string when conflict (duplicate silently skipped)
   return rows[0]?.id ?? "";
 }
 
 /**
- * Fetch a random unseen question from the bank for a given topic.
- * Matches on canonical_topic (case-insensitive) and region.
- * Excludes any question whose id is in excludeIds (already seen by participants).
+ * Fetch a random question from the bank for a given topic using smart ordering.
+ * Prefers questions not used recently and with lower usage counts.
  * Returns null if no suitable question exists.
  */
 export async function fetchQuestionFromBank(
   topic: string,
   region: string,
-  excludeIds: string[],
 ): Promise<(Question & { dbId: string }) | null> {
   if (!hasDb(db)) return null;
-
-  const base = and(
-    sql`lower(${questions.canonicalTopic}) = lower(${topic})`,
-    sql`(${questions.region} = ${region} OR ${questions.region} = 'global')`,
-    eq(questions.isActive, true),
-    excludeIds.length > 0 ? notInArray(questions.id, excludeIds) : undefined,
-  );
 
   const rows = await db
     .select()
     .from(questions)
-    .where(base)
-    .orderBy(sql`RANDOM()`)
+    .where(
+      and(
+        sql`lower(${questions.canonicalTopic}) = lower(${topic})`,
+        sql`(${questions.region} = ${region} OR ${questions.region} = 'global')`,
+        eq(questions.isActive, true),
+      )
+    )
+    .orderBy(
+      sql`CASE WHEN ${questions.lastUsedAt} > NOW() - INTERVAL '1 hour' THEN 0 ELSE 1 END DESC`,
+      questions.usageCount,
+      sql`RANDOM()`,
+    )
     .limit(1);
 
   if (!rows[0]) return null;
 
   const row = rows[0];
+
+  // Fire-and-forget: bump usage count and last_used_at
+  db!
+    .update(questions)
+    .set({
+      usageCount: sql`${questions.usageCount} + 1`,
+      lastUsedAt: new Date(),
+    })
+    .where(eq(questions.id, row.id))
+    .catch(() => { /* ignore */ });
+
   return {
     dbId:           row.id,
     text:           row.text,
@@ -118,53 +141,78 @@ export async function fetchQuestionFromBank(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// USER STATS METHODS (Part 2)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Count how many unseen questions exist for a topic.
- * Used to check if the bank pool is large enough to trust (threshold: 5).
+ * Upsert aggregate stats for a user after a game ends.
+ * Increments totals and keeps the maximum best streak.
  */
-export async function countAvailableQuestions(
-  topic: string,
-  region: string,
-  excludeIds: string[],
-): Promise<number> {
-  if (!hasDb(db)) return 0;
-
-  const base = and(
-    sql`lower(${questions.canonicalTopic}) = lower(${topic})`,
-    sql`(${questions.region} = ${region} OR ${questions.region} = 'global')`,
-    eq(questions.isActive, true),
-    excludeIds.length > 0 ? notInArray(questions.id, excludeIds) : undefined,
-  );
-
-  const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(questions)
-    .where(base);
-
-  return rows[0]?.count ?? 0;
+export async function upsertUserStats(
+  userId: string,
+  stats: { totalCorrect: number; totalAnswered: number; bestStreak: number; totalScore: number },
+): Promise<void> {
+  if (!hasDb(db) || !userId) return;
+  await db.execute(sql`
+    INSERT INTO user_stats (user_id, total_games, total_correct, total_answered, best_streak, total_score, updated_at)
+    VALUES (
+      ${userId}::uuid,
+      1,
+      ${stats.totalCorrect},
+      ${stats.totalAnswered},
+      ${stats.bestStreak},
+      ${stats.totalScore},
+      NOW()
+    )
+    ON CONFLICT (user_id) DO UPDATE SET
+      total_games    = user_stats.total_games + 1,
+      total_correct  = user_stats.total_correct + EXCLUDED.total_correct,
+      total_answered = user_stats.total_answered + EXCLUDED.total_answered,
+      best_streak    = GREATEST(user_stats.best_streak, EXCLUDED.best_streak),
+      total_score    = user_stats.total_score + EXCLUDED.total_score,
+      updated_at     = NOW()
+  `);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PLAYER SEEN QUESTIONS
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Upsert per-topic stats for a user after a game ends.
+ */
+export async function upsertUserTopicStats(
+  userId: string,
+  topicTally: Record<string, { answered: number; correct: number }>,
+): Promise<void> {
+  if (!hasDb(db) || !userId) return;
+  const entries = Object.entries(topicTally);
+  if (entries.length === 0) return;
 
-/** Get all question IDs already seen by a set of users. */
-export async function getSeenQuestionIds(userIds: string[]): Promise<string[]> {
-  if (!hasDb(db) || userIds.length === 0) return [];
-  const rows = await db
-    .select({ questionId: playerSeenQuestions.questionId })
-    .from(playerSeenQuestions)
-    .where(inArray(playerSeenQuestions.userId, userIds));
-  return rows.map(r => r.questionId);
+  for (const [topic, counts] of entries) {
+    await db.execute(sql`
+      INSERT INTO user_topic_stats (user_id, topic, total_answered, total_correct)
+      VALUES (${userId}::uuid, ${topic}, ${counts.answered}, ${counts.correct})
+      ON CONFLICT (user_id, topic) DO UPDATE SET
+        total_answered = user_topic_stats.total_answered + EXCLUDED.total_answered,
+        total_correct  = user_topic_stats.total_correct + EXCLUDED.total_correct
+    `);
+  }
 }
 
-/** Mark a question as seen for a list of users. Ignores conflicts (already seen). */
-export async function markQuestionSeen(userIds: string[], questionId: string): Promise<void> {
-  if (!hasDb(db) || userIds.length === 0 || !questionId) return;
-  await db
-    .insert(playerSeenQuestions)
-    .values(userIds.map(uid => ({ userId: uid, questionId })))
-    .onConflictDoNothing();
+/**
+ * Batch update question quality counters after a round.
+ */
+export async function updateQuestionStats(
+  updates: { questionId: string; served: number; correct: number }[],
+): Promise<void> {
+  if (!hasDb(db) || updates.length === 0) return;
+  for (const u of updates) {
+    await db
+      .update(questions)
+      .set({
+        totalServed:  sql`${questions.totalServed} + ${u.served}`,
+        totalCorrect: sql`${questions.totalCorrect} + ${u.correct}`,
+      })
+      .where(eq(questions.id, u.questionId));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,33 +286,4 @@ export async function claimGuestGameRows(
     .update(gamePlayers)
     .set({ userId })
     .where(and(eq(gamePlayers.playerName, playerName), sql`${gamePlayers.userId} IS NULL`));
-}
-
-/** Record a round. Returns the new round's id. */
-export async function createGameRound(data: {
-  gameId:      string;
-  questionId?: string;
-  roundNumber: number;
-  topic:       string;
-}): Promise<string> {
-  if (!hasDb(db) || !data.gameId) return "";
-  const rows = await db.insert(gameRounds).values(data).returning({ id: gameRounds.id });
-  return rows[0]?.id ?? "";
-}
-
-/** Record every participant's answer for a round. */
-export async function createRoundAnswers(
-  roundId: string,
-  answers: {
-    userId?:      string | null;
-    answerIndex:  number;
-    timeTaken:    number;
-    wasCorrect:   boolean;
-    pointsEarned: number;
-  }[],
-): Promise<void> {
-  if (!hasDb(db) || !roundId || answers.length === 0) return;
-  await db.insert(roundAnswers).values(
-    answers.map(a => ({ roundId, ...a, userId: a.userId ?? null }))
-  );
 }

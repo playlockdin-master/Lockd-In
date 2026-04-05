@@ -1,6 +1,6 @@
 // ── Drizzle DB table definitions ─────────────────────────────────────────────
 import {
-  pgTable, uuid, text, boolean, integer, timestamp, jsonb, index, uniqueIndex, primaryKey,
+  pgTable, uuid, text, boolean, integer, real, timestamp, jsonb, index, uniqueIndex, primaryKey,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -28,9 +28,17 @@ export const questions = pgTable('questions', {
   region:         text('region').notNull().default('global'),// 'global' | RegionId
   isActive:       boolean('is_active').notNull().default(true),
   createdAt:      timestamp('created_at').notNull().defaultNow(),
+  // ── Question intelligence columns (Part 3) ────────────────────────────────
+  usageCount:   integer('usage_count').notNull().default(0),
+  lastUsedAt:   timestamp('last_used_at'),
+  qualityScore: real('quality_score').notNull().default(0.5),
+  textHash:     text('text_hash'),
+  totalServed:  integer('total_served').notNull().default(0),
+  totalCorrect: integer('total_correct').notNull().default(0),
 }, t => ({
-  topicIdx:  index('questions_topic_idx').on(t.canonicalTopic),
-  regionIdx: index('questions_region_idx').on(t.region),
+  topicIdx:      index('questions_topic_idx').on(t.canonicalTopic),
+  regionIdx:     index('questions_region_idx').on(t.region),
+  topicHashUniq: uniqueIndex('questions_topic_hash_uniq').on(t.canonicalTopic, t.textHash),
 }));
 
 export const games = pgTable('games', {
@@ -54,69 +62,39 @@ export const gamePlayers = pgTable('game_players', {
 }, t => ({
   gameIdx:    index('game_players_game_idx').on(t.gameId),
   userIdx:    index('game_players_user_idx').on(t.userId),
-  // Unique constraint so upsertGamePlayer's onConflictDoNothing works correctly
-  // and never inserts duplicate rows for the same player in the same game.
   uniqueName: uniqueIndex('game_players_game_name_uniq').on(t.gameId, t.playerName),
 }));
 
-export const gameRounds = pgTable('game_rounds', {
-  id:          uuid('id').primaryKey().defaultRandom(),
-  gameId:      uuid('game_id').notNull().references(() => games.id, { onDelete: 'cascade' }),
-  questionId:  uuid('question_id').references(() => questions.id, { onDelete: 'set null' }),
-  roundNumber: integer('round_number').notNull(),
-  topic:       text('topic').notNull(),
-}, t => ({
-  gameIdx: index('game_rounds_game_idx').on(t.gameId),
-}));
+// ── User aggregate stats (Part 2) ─────────────────────────────────────────────
+export const userStats = pgTable('user_stats', {
+  userId:        uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  totalGames:    integer('total_games').notNull().default(0),
+  totalCorrect:  integer('total_correct').notNull().default(0),
+  totalAnswered: integer('total_answered').notNull().default(0),
+  bestStreak:    integer('best_streak').notNull().default(0),
+  totalScore:    integer('total_score').notNull().default(0),
+  updatedAt:     timestamp('updated_at').notNull().defaultNow(),
+});
 
-export const roundAnswers = pgTable('round_answers', {
-  id:           uuid('id').primaryKey().defaultRandom(),
-  roundId:      uuid('round_id').notNull().references(() => gameRounds.id, { onDelete: 'cascade' }),
-  userId:       uuid('user_id').references(() => users.id, { onDelete: 'set null' }), // null = guest
-  answerIndex:  integer('answer_index').notNull(),           // -1 = timeout, -2 = absent
-  timeTaken:    integer('time_taken').notNull().default(0),  // ms remaining when answered
-  wasCorrect:   boolean('was_correct').notNull().default(false),
-  pointsEarned: integer('points_earned').notNull().default(0),
+export const userTopicStats = pgTable('user_topic_stats', {
+  userId:        uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  topic:         text('topic').notNull(),
+  totalAnswered: integer('total_answered').notNull().default(0),
+  totalCorrect:  integer('total_correct').notNull().default(0),
 }, t => ({
-  roundIdx: index('round_answers_round_idx').on(t.roundId),
-  userIdx:  index('round_answers_user_idx').on(t.userId),
-}));
-
-export const playerSeenQuestions = pgTable('player_seen_questions', {
-  userId:     uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  questionId: uuid('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
-  seenAt:     timestamp('seen_at').notNull().defaultNow(),
-}, t => ({
-  pk:       primaryKey({ columns: [t.userId, t.questionId] }),
-  userIdx:  index('psq_user_idx').on(t.userId),
+  pk:      primaryKey({ columns: [t.userId, t.topic] }),
+  userIdx: index('uts_user_idx').on(t.userId),
 }));
 
 // ── Relations ─────────────────────────────────────────────────────────────────
-export const usersRelations = relations(users, ({ many }) => ({
-  gamePlayers:          many(gamePlayers),
-  roundAnswers:         many(roundAnswers),
-  playerSeenQuestions:  many(playerSeenQuestions),
+export const usersRelations = relations(users, ({ many, one }) => ({
+  gamePlayers:    many(gamePlayers),
+  userStats:      one(userStats, { fields: [users.id], references: [userStats.userId] }),
+  userTopicStats: many(userTopicStats),
 }));
 
 export const gamesRelations = relations(games, ({ many }) => ({
   gamePlayers: many(gamePlayers),
-  gameRounds:  many(gameRounds),
-}));
-
-export const gameRoundsRelations = relations(gameRounds, ({ one, many }) => ({
-  game:         one(games,     { fields: [gameRounds.gameId],     references: [games.id] }),
-  question:     one(questions, { fields: [gameRounds.questionId], references: [questions.id] }),
-  roundAnswers: many(roundAnswers),
-}));
-
-export const roundAnswersRelations = relations(roundAnswers, ({ one }) => ({
-  round: one(gameRounds, { fields: [roundAnswers.roundId], references: [gameRounds.id] }),
-  user:  one(users,      { fields: [roundAnswers.userId],  references: [users.id] }),
-}));
-
-export const playerSeenQuestionsRelations = relations(playerSeenQuestions, ({ one }) => ({
-  user:     one(users,     { fields: [playerSeenQuestions.userId],     references: [users.id] }),
-  question: one(questions, { fields: [playerSeenQuestions.questionId], references: [questions.id] }),
 }));
 
 // ── Shared profanity list — single source of truth for client + server ────────
@@ -159,13 +137,13 @@ export type RegionId =
 export interface RegionDef {
   id: RegionId;
   label: string;
-  flag: string;         // representative emoji flag
+  flag: string;
   description: string;
   countries: CountryDef[];
 }
 
 export interface CountryDef {
-  code: string;         // ISO-ish short code
+  code: string;
   label: string;
   flag: string;
 }
@@ -274,12 +252,11 @@ export interface Question {
   correctIndex: number;
   explanation: string;
   difficulty: Difficulty;
-  canonicalTopic?: string; // AI-normalised topic label (e.g. "ch3ss" → "Chess")
+  canonicalTopic?: string;
 }
 
 export type GameStateStatus = 'lobby' | 'topic_selection' | 'question' | 'results' | 'ended' | 'generating';
 
-// Shared timer durations — defaults and limits
 export const TOPIC_TIME_SECONDS = 25;
 export const QUESTION_TIME_SECONDS = 25;
 
@@ -289,28 +266,28 @@ export const QUESTION_TIME_MIN = 15;
 export const QUESTION_TIME_MAX = 60;
 
 export interface Player {
-  id: string;         // permanent player identity (UUID, generated once at first join)
-  socketId: string;   // current live socket — changes on every reconnect
+  id: string;
+  socketId: string;
   name: string;
-  avatarId: string; // character id e.g. "ghost" | "gremlin" | ...
+  avatarId: string;
   score: number;
   streak: number;
   isReady: boolean;
   isHost: boolean;
-  isConnected: boolean; // true = has an active socket right now
+  isConnected: boolean;
   lastAnswer?: number;
-  lastAnswerCorrect?: boolean | null; // true = correct, false = wrong, null = timed out
+  lastAnswerCorrect?: boolean | null;
   lastPoints?: number;
   reaction?: string;
-  userId?: string;    // DB user id if logged in, undefined for guests
-  /** @deprecated use isConnected instead — kept for schema compatibility during transition */
+  userId?: string;
+  /** @deprecated use isConnected instead */
   isReconnecting?: boolean;
 }
 
 export interface RoundRecord {
   topic: string;
   correctIndex: number;
-  playerAnswers: Record<string, number>; // permanent playerId -> answerIndex (-1 = timeout, -2 = absent)
+  playerAnswers: Record<string, number>;
 }
 
 export interface Room {
@@ -318,41 +295,32 @@ export interface Room {
   players: Player[];
   status: GameStateStatus;
   mode: 'round' | 'score';
-  topicMode: 'live' | 'preset'; // 'live' = players type topic each round, 'preset' = topics submitted upfront
-  target: number; // e.g. 10 or 20 for round mode, 1000 or 2000 for score mode
-  topicTimeSecs: number;    // host-configured topic selection timer (25–60s)
-  questionTimeSecs: number; // host-configured answer timer (15–60s)
+  topicMode: 'live' | 'preset';
+  target: number;
+  topicTimeSecs: number;
+  questionTimeSecs: number;
   currentRound: number;
   usedTopics: string[];
   currentTopic?: string;
   currentQuestion?: Question;
-  topicSelectorId?: string;  // permanent playerId whose turn it is
+  topicSelectorId?: string;
   topicDeadline?: number;
   questionDeadline?: number;
   resultsDeadline?: number;
-  answers: Record<string, { answerIndex: number, timeTaken: number }>; // permanent playerId -> answer
-  /**
-   * Locked list of permanent playerIds who were present at question-start.
-   * This set NEVER changes during a question — disconnects/reconnects only
-   * update Player.isConnected. The timer runs to completion; at timeout
-   * any playerId in this set without an answer is auto-submitted as timed-out.
-   */
+  answers: Record<string, { answerIndex: number, timeTaken: number }>;
   questionParticipants?: string[];
-  /** @deprecated alias kept for wire-compat — mirrors questionParticipants */
+  /** @deprecated alias kept for wire-compat */
   roundPlayerIds?: string[];
-  fastestPlayerId?: string; // permanent playerId of fastest correct answerer
-  playAgainIds?: string[];  // permanent playerIds who pressed Play Again
-  viewingResultsIds?: string[]; // permanent playerIds still on podium screen
-  askedQuestions?: string[]; // fingerprints of questions asked this game — used for deduplication
-  // Preset mode fields
-  presetTopics?: Record<string, { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]>; // permanent playerId -> topics
-  pregeneratedQuestions?: (Question & { topic: string })[]; // all pre-generated questions for preset mode
-  // Region system — controls cultural context injected into AI question generation
-  regionMode?: RegionMode;    // 'global' (no bias) | 'regional' (biased to region)
-  regionId?: RegionId;        // which region (only when regionMode === 'regional')
-  countryCode?: string;       // optional drill-down to a specific country within the region
-  roundHistory?: RoundRecord[]; // full record of every round — used for share card stats
-  dbGameId?: string;            // DB games.id once a game row is created (Phase 4)
-  // Per-question DB tracking (Phase 3)
-  currentQuestionDbId?: string; // DB questions.id of the question currently being played
+  fastestPlayerId?: string;
+  playAgainIds?: string[];
+  viewingResultsIds?: string[];
+  askedQuestions?: string[];
+  presetTopics?: Record<string, { topic: string; difficulty: 'Easy' | 'Medium' | 'Hard' }[]>;
+  pregeneratedQuestions?: (Question & { topic: string })[];
+  regionMode?: RegionMode;
+  regionId?: RegionId;
+  countryCode?: string;
+  roundHistory?: RoundRecord[];
+  dbGameId?: string;
+  currentQuestionDbId?: string;
 }
