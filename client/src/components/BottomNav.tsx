@@ -6,8 +6,8 @@ import { useAuth } from "@/hooks/use-auth";
 const tabs = [
   { path: "/",            icon: Home,      label: "Home"        },
   { path: "/leaderboard", icon: Trophy,    label: "Leaderboard" },
-  { path: "/dashboard",   icon: BarChart2, label: "Stats",      isStats: true },
-  { path: "/dashboard",   icon: User,      label: "Profile",    isProfile: true },
+  { path: "/dashboard",   icon: BarChart2, label: "Stats"       },
+  { path: "/profile",     icon: User,      label: "Profile",    isProfile: true },
 ];
 
 export function BottomNav() {
@@ -15,10 +15,9 @@ export function BottomNav() {
   const { user } = useAuth();
 
   // Don't show in game rooms
-  if (location.startsWith("/room/") || location === "/kicked") return null;
+  if (location.startsWith("/room/") || location === "/kicked" || location === "/setup-username") return null;
 
-  const isActive = (path: string, isProfile?: boolean, isStats?: boolean) => {
-    if (isProfile || isStats) return location === "/dashboard";
+  const isActive = (path: string) => {
     if (path === "/") return location === "/";
     return location.startsWith(path);
   };
@@ -34,15 +33,14 @@ export function BottomNav() {
       }}
     >
       <div className="flex items-center justify-around px-2 pt-2 pb-2">
-        {tabs.map(({ path, icon: Icon, label, isProfile, isStats }) => {
-          const active = isActive(path, isProfile, isStats);
-          const navigateTo = (isProfile || isStats) ? "/dashboard" : path;
-          const showGuestDot = !user && (isProfile || isStats);
+        {tabs.map(({ path, icon: Icon, label, isProfile }) => {
+          const active = isActive(path);
+          const showGuestDot = !user && isProfile;
 
           return (
             <button
               key={label}
-              onClick={() => setLocation(navigateTo)}
+              onClick={() => setLocation(path)}
               className="relative flex flex-col items-center gap-1 px-4 py-1 rounded-xl transition-all"
               style={{ minWidth: 56 }}
             >

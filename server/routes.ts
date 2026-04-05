@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { setupGameSockets } from "./gameState";
 import { db, users, gamePlayers, games } from "./db";
+import { updateUserAvatar } from "./storage";
 import { userStats, userTopicStats } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 
@@ -184,26 +185,59 @@ export async function registerRoutes(
 
   /**
    * GET /api/leaderboard/global
-   * Top 50 players by total score — joins user_stats + users.
+   * Top 50 players by total score.
+   * ?period=daily|weekly|monthly|alltime  (default: alltime)
    */
   app.get("/api/leaderboard/global", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
+    const period = (req.query.period as string) || "alltime";
+
     try {
+      if (period === "alltime") {
+        // Fast path — use pre-aggregated user_stats
+        const rows = await db
+          .select({
+            userId:     users.id,
+            username:   users.username,
+            avatarId:   users.avatarId,
+            totalScore: userStats.totalScore,
+            totalGames: userStats.totalGames,
+            bestStreak: userStats.bestStreak,
+          })
+          .from(userStats)
+          .innerJoin(users, eq(userStats.userId, users.id))
+          .orderBy(desc(userStats.totalScore))
+          .limit(50);
+        res.json({ leaderboard: rows, period });
+        return;
+      }
+
+      // Time-filtered path — aggregate from game_players joined with games
+      const intervalMap: Record<string, string> = {
+        daily:   "1 day",
+        weekly:  "7 days",
+        monthly: "30 days",
+      };
+      const interval = intervalMap[period] ?? "7 days";
+
       const rows = await db
         .select({
-          userId:     users.id,
+          userId:     gamePlayers.userId,
           username:   users.username,
           avatarId:   users.avatarId,
-          totalScore: userStats.totalScore,
-          totalGames: userStats.totalGames,
-          bestStreak: userStats.bestStreak,
+          totalScore: sql<number>`cast(sum(${gamePlayers.finalScore}) as int)`,
+          totalGames: sql<number>`cast(count(distinct ${gamePlayers.gameId}) as int)`,
+          bestStreak: sql<number>`cast(max(${gamePlayers.bestStreak}) as int)`,
         })
-        .from(userStats)
-        .innerJoin(users, eq(userStats.userId, users.id))
-        .orderBy(desc(userStats.totalScore))
+        .from(gamePlayers)
+        .innerJoin(games, eq(gamePlayers.gameId, games.id))
+        .innerJoin(users, eq(gamePlayers.userId, users.id))
+        .where(sql`${gamePlayers.userId} is not null and ${games.startedAt} >= now() - interval '${sql.raw(interval)}'`)
+        .groupBy(gamePlayers.userId, users.id)
+        .orderBy(desc(sql`sum(${gamePlayers.finalScore})`))
         .limit(50);
 
-      res.json({ leaderboard: rows });
+      res.json({ leaderboard: rows, period });
     } catch (err) {
       console.error("[api] /leaderboard/global error:", err);
       res.status(500).json({ error: "Internal error" });
@@ -283,6 +317,23 @@ export async function registerRoutes(
     } catch (err) {
       console.error("[api] /leaderboard/topic error:", err);
       res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // POST /api/player/avatar — save avatar for logged-in user
+  app.post("/api/player/avatar", async (req, res) => {
+    const userId = req.session?.userId;
+    if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+    const { avatarId } = req.body as { avatarId?: string };
+    if (!avatarId || typeof avatarId !== "string") {
+      res.status(400).json({ error: "avatarId required" }); return;
+    }
+    try {
+      await updateUserAvatar(userId, avatarId);
+      req.session.avatarId = avatarId;
+      req.session.save(() => res.json({ ok: true }));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update avatar" });
     }
   });
 

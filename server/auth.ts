@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import https from "https";
-import { findUserByOAuth, createUser, touchUserLastSeen, claimGuestGameRows } from "./storage";
+import { findUserByOAuth, createUser, touchUserLastSeen, claimGuestGameRows, isUsernameTaken } from "./storage";
 
 const BASE_URL             = process.env.BASE_URL || "http://localhost:5000";
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID || "";
@@ -15,6 +15,8 @@ declare module "express-session" {
     avatarId:  string;
     state?:    string;
     returnTo?: string;
+    pendingOAuthId?: string;
+    pendingOAuthProvider?: string;
   }
 }
 
@@ -162,21 +164,25 @@ authRouter.get("/google/callback", async (req: Request, res: Response) => {
 
     if (!userJson.sub) throw new Error("No user sub in Google response");
 
-    const oauthId  = userJson.sub;
-    const username = (userJson.name || userJson.email || "Player").slice(0, 20);
+    const oauthId = userJson.sub;
 
-    // Find or create user in DB
+    // Find existing user in DB
     let user = await findUserByOAuth("google", oauthId);
     if (!user) {
-      user = await createUser({ oauthProvider: "google", oauthId, username, avatarId: "ghost" });
-      console.log(`[auth] New user created: ${username} (${oauthId.slice(0, 8)}...)`);
-    } else {
-      await touchUserLastSeen(user.id);
-      console.log(`[auth] Existing user logged in: ${user.username}`);
+      // New user — store pending OAuth in session and redirect to username setup
+      req.session.pendingOAuthId       = oauthId;
+      req.session.pendingOAuthProvider = "google";
+      delete req.session.state;
+      req.session.save((err) => {
+        if (err) console.warn("[auth] Session save warning:", err);
+        res.redirect("/setup-username");
+      });
+      return;
     }
 
-    // Retroactively claim any guest game rows for this username
-    await claimGuestGameRows(username, user.id);
+    // Existing user — log in normally
+    await touchUserLastSeen(user.id);
+    console.log(`[auth] Existing user logged in: ${user.username}`);
 
     // Set session
     req.session.userId   = user.id;
@@ -197,4 +203,68 @@ authRouter.get("/google/callback", async (req: Request, res: Response) => {
     console.error("[auth] Google callback error:", e?.message);
     res.redirect("/?auth_error=google");
   }
+});
+// POST /auth/complete-signup — finalize new user creation with chosen username
+authRouter.post("/complete-signup", async (req: Request, res: Response) => {
+  const { username, avatarId } = req.body as { username?: string; avatarId?: string };
+  const oauthId       = req.session.pendingOAuthId;
+  const oauthProvider = req.session.pendingOAuthProvider;
+
+  if (!oauthId || !oauthProvider) {
+    res.status(400).json({ error: "No pending signup session" });
+    return;
+  }
+
+  if (!username || typeof username !== "string") {
+    res.status(400).json({ error: "Username is required" });
+    return;
+  }
+
+  const trimmed = username.trim();
+  if (trimmed.length < 2 || trimmed.length > 20) {
+    res.status(400).json({ error: "Username must be 2–20 characters" });
+    return;
+  }
+  if (!/[a-zA-Z]/.test(trimmed)) {
+    res.status(400).json({ error: "Username must contain at least one letter" });
+    return;
+  }
+
+  try {
+    const taken = await isUsernameTaken(trimmed);
+    if (taken) {
+      res.status(409).json({ error: "That username is already taken. Please choose another." });
+      return;
+    }
+
+    const safeAvatarId = (typeof avatarId === "string" && avatarId.length > 0) ? avatarId : "ghost";
+    const user = await createUser({ oauthProvider, oauthId, username: trimmed, avatarId: safeAvatarId });
+    console.log(`[auth] New user created via setup: ${trimmed} (${oauthId.slice(0, 8)}...)`);
+
+    // Claim any guest games played before signing up
+    await claimGuestGameRows(trimmed, user.id);
+
+    // Clear pending, set real session
+    delete req.session.pendingOAuthId;
+    delete req.session.pendingOAuthProvider;
+    req.session.userId   = user.id;
+    req.session.username = user.username;
+    req.session.avatarId = user.avatarId;
+
+    req.session.save((err) => {
+      if (err) console.warn("[auth] Post-signup session save warning:", err);
+      res.json({ ok: true });
+    });
+  } catch (e: any) {
+    console.error("[auth] complete-signup error:", e?.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+// GET /auth/check-username — check availability
+authRouter.get("/check-username", async (req: Request, res: Response) => {
+  const { username } = req.query as { username?: string };
+  if (!username) { res.json({ available: false }); return; }
+  const taken = await isUsernameTaken(username.trim());
+  res.json({ available: !taken });
 });

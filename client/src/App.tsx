@@ -10,6 +10,8 @@ import GameRoom from "@/pages/GameRoom";
 import Kicked from "@/pages/Kicked";
 import Dashboard from "@/pages/Dashboard";
 import Leaderboard from "@/pages/Leaderboard";
+import Profile from "@/pages/Profile";
+import UsernameSetup from "@/pages/UsernameSetup";
 
 function Router() {
   return (
@@ -18,6 +20,8 @@ function Router() {
       <Route path="/kicked" component={Kicked} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/leaderboard" component={Leaderboard} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/setup-username" component={UsernameSetup} />
       <Route path="/room/:code" component={GameRoom} />
       <Route component={NotFound} />
     </Switch>

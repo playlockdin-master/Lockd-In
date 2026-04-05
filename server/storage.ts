@@ -298,3 +298,20 @@ export async function claimGuestGameRows(
     .set({ userId })
     .where(and(eq(gamePlayers.playerName, playerName), sql`${gamePlayers.userId} IS NULL`));
 }
+
+/** Check if a username is already taken (case-insensitive). */
+export async function isUsernameTaken(username: string): Promise<boolean> {
+  if (!hasDb(db)) return false;
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`lower(${users.username}) = lower(${username})`)
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Update a user's avatarId. */
+export async function updateUserAvatar(id: string, avatarId: string): Promise<void> {
+  if (!hasDb(db)) return;
+  await db.update(users).set({ avatarId }).where(eq(users.id, id));
+}
