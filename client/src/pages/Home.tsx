@@ -7,7 +7,7 @@ import { ParticleBackground } from "@/components/ParticleBackground";
 import { AudioController } from "@/components/AudioController";
 import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gamepad2, Hash, User, Ban, LogIn, CheckCircle } from "lucide-react";
+import { Gamepad2, Hash, User, Ban, LogIn, CheckCircle, Trophy } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 import { useAuth } from "@/hooks/use-auth";
@@ -107,8 +107,15 @@ export default function Home() {
 
       {/* Top bar — desktop: full controls on right */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-        {/* Desktop-only sign-in/user controls */}
+        {/* Desktop-only controls */}
         <div className="hidden md:flex items-center gap-2">
+          <button
+            onClick={() => setLocation("/leaderboard")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white/50 hover:text-white/80 transition-colors glass-panel"
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            Leaderboard
+          </button>
           {!loading && (
             user ? (
               <motion.button
@@ -182,7 +189,7 @@ export default function Home() {
 
         {/* Logo */}
         <motion.div
-          className="text-center mb-5 md:mb-7"
+          className="text-center mb-5 md:mb-7 mt-14 md:mt-0"
           initial={{ opacity: 0, y: -40 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: "easeOut" }}
         >
