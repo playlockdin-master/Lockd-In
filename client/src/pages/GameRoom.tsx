@@ -319,7 +319,7 @@ export default function GameRoom() {
       case 'topic_selection':
         return <TopicSelectionView key={`topic-${room.currentRound}`} room={room} me={me} onSelectTopic={selectTopic} error={error} onClearError={handleClearError} topicRejection={topicRejection} topicSuggestions={topicSuggestions} loadingSuggestions={loadingSuggestions} onRequestSuggestions={requestTopicSuggestions} />;
       case 'question':
-        return <QuestionView key={`question-${room.currentRound}`} room={room} me={me} onSubmitAnswer={submitAnswer} topicRejection={topicRejection} />;
+        return <QuestionView key={`question-${room.currentRound}`} room={room} me={me} onSubmitAnswer={submitAnswer} topicRejection={topicRejection} overlayVisible={showTransition} />;
       case 'generating':
         return (
           <div key="generating" className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center px-4">

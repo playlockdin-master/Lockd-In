@@ -248,9 +248,30 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {isViewingResults ? <div className="w-6 h-6 rounded-full border-2 border-white/10" />
-                        : p.isReady ? <CheckCircle2 className="w-6 h-6 text-green-400" />
-                        : <div className="w-6 h-6 rounded-full border-2 border-white/20" />}
+                      {/* Inline ready toggle for the current player */}
+                      {p.id === me.id && !isViewingResults ? (
+                        p.isReady ? (
+                          <button
+                            onClick={() => { onReady(false); playSound('click'); }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-green-400/40 bg-green-400/10 text-green-400 text-xs font-semibold hover:bg-red-400/10 hover:border-red-400/40 hover:text-red-400 transition-all"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { onReady(true); playSound('click'); }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/20 bg-white/5 text-white/50 text-xs font-semibold hover:border-teal-400/50 hover:bg-teal-400/10 hover:text-teal-300 transition-all"
+                          >
+                            <div className="w-3 h-3 rounded-full border border-current" /> Ready?
+                          </button>
+                        )
+                      ) : (
+                        isViewingResults
+                          ? <div className="w-5 h-5 rounded-full border-2 border-white/10" />
+                          : p.isReady
+                            ? <CheckCircle2 className="w-5 h-5 text-green-400" />
+                            : <div className="w-5 h-5 rounded-full border-2 border-white/20" />
+                      )}
                       {me.isHost && p.id !== me.id && room.status === 'lobby' && onKickPlayer && (
                         <button onClick={() => onKickPlayer(p.id)} title={`Kick ${p.name}`}
                           className="w-5 h-5 flex items-center justify-center rounded-full text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-colors text-xs font-bold leading-none">✕</button>
@@ -263,8 +284,12 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
             {room.players.length > 4 && <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/40 to-transparent rounded-b-xl" />}
           </div>
 
-          <button onClick={() => setChangingAvatar(v => !v)} className="mt-4 flex items-center gap-2 text-xs text-white/40 hover:text-white/70 transition-colors self-start">
-            <Pencil className="w-3 h-3" />{changingAvatar ? 'Cancel' : 'Change my character'}
+          <button
+            onClick={() => setChangingAvatar(v => !v)}
+            className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/15 bg-white/5 text-xs font-medium text-white/50 hover:border-teal-400/40 hover:bg-teal-400/8 hover:text-white/80 transition-all self-start"
+          >
+            <Pencil className="w-3 h-3" />
+            {changingAvatar ? 'Cancel' : 'Change character'}
           </button>
           <AnimatePresence>
             {changingAvatar && (
@@ -678,14 +703,6 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
           </div>
 
           <div className="mt-8 space-y-4">
-            {!me.isReady ? (
-              <Button size="lg" className="w-full" onClick={() => { onReady(true); playSound('click'); }}>I'm Ready!</Button>
-            ) : (
-              <Button size="lg" variant="outline" className="w-full text-green-400 border-green-400/30 hover:bg-green-400/10" onClick={() => { onReady(false); playSound('click'); }}>
-                <CheckCircle2 className="w-5 h-5 mr-2" /> Ready
-              </Button>
-            )}
-
             {me.isHost && (
               <>
                 <Button

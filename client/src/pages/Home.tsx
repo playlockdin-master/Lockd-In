@@ -7,7 +7,7 @@ import { ParticleBackground } from "@/components/ParticleBackground";
 import { AudioController } from "@/components/AudioController";
 import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gamepad2, Hash, User, Ban, LogOut, LogIn, CheckCircle } from "lucide-react";
+import { Gamepad2, Hash, User, Ban, LogOut, LogIn, CheckCircle, Trophy, LayoutDashboard } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 import { useAuth } from "@/hooks/use-auth";
@@ -87,16 +87,28 @@ export default function Home() {
 
       {/* Top bar */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+        {/* Leaderboard link — always visible */}
+        <button
+          onClick={() => setLocation("/leaderboard")}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white/50 hover:text-white/80 transition-colors glass-panel"
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          Leaderboard
+        </button>
+
         {!loading && (
           user ? (
             <motion.div
               initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
               className="flex items-center gap-2"
             >
-              <div className="flex items-center gap-2 glass-panel px-3 py-1.5 rounded-full">
-                <CheckCircle className="w-3.5 h-3.5 text-teal-400" />
+              <button
+                onClick={() => setLocation("/dashboard")}
+                className="flex items-center gap-2 glass-panel px-3 py-1.5 rounded-full hover:border-teal-400/40 transition-all border border-white/10"
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 text-teal-400" />
                 <span className="text-white/80 text-xs font-semibold">{user.username}</span>
-              </div>
+              </button>
               <button
                 onClick={logout}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white/50 hover:text-white/80 transition-colors glass-panel"

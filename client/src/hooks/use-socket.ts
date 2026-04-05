@@ -100,12 +100,22 @@ export function useSocket() {
   const isConnectedRef        = useRef(false);
   // Current permanent playerId — updated whenever server sends playerIdentity
   const myPlayerIdRef         = useRef<string | null>(loadStoredPlayerId());
+  // Logged-in DB userId — fetched once on mount, kept for joinRoom events
+  const loggedInUserIdRef     = useRef<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!isConnectedRef.current) setConnectTimeout(true);
     }, 8000);
     return () => clearTimeout(timer);
+  }, []);
+
+  // Fetch logged-in userId once — used to associate DB account with game sessions
+  useEffect(() => {
+    fetch('/auth/me', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => { if (data?.user?.id) loggedInUserIdRef.current = data.user.id; })
+      .catch(() => {});
   }, []);
 
   const clearIdentityRef = useRef<() => void>(() => {});
@@ -151,6 +161,7 @@ export function useSocket() {
             roomCode: roomCode.toUpperCase(),
             avatarId,
             playerId: myPlayerIdRef.current ?? undefined, // send back our permanent id
+            userId:   loggedInUserIdRef.current ?? undefined,
           });
         }
       }
@@ -277,6 +288,7 @@ export function useSocket() {
       roomCode,
       avatarId: avatarId ?? 'ghost',
       playerId: myPlayerIdRef.current ?? undefined, // send permanent id if we have one
+      userId:   loggedInUserIdRef.current ?? undefined,
     });
   }, []);
 

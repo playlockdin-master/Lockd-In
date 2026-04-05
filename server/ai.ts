@@ -1,6 +1,7 @@
 import { type Question, type RegionMode, type RegionId, getRegion, getCountry } from "@shared/schema";
 import { z } from "zod";
 import { containsProfanity } from "@shared/schema";
+import { storeQuestion } from "./storage";
 
 // ---------------------------------------------------------------------------
 // ENV & CONFIG
@@ -784,7 +785,8 @@ export async function generateQuestion(
   difficultyOverride?: Difficulty,
   askedQuestions:     string[] = [],
   regionContext?:     string,
-): Promise<Question> {
+  regionId?:          string,   // for DB storage only — the RegionId or 'global'
+): Promise<{ question: Question; storePromise: Promise<string> }> {
   const safeTopic = sanitizeTopic(topic);
 
   // Cache hit — serve instantly, zero API cost
@@ -793,7 +795,8 @@ export async function generateQuestion(
   if (cached) {
     console.log(`[cache] hit topic="${safeTopic}" room="${roomId}"`);
     markServed(roomId, cached);
-    return cached;
+    // Cache hits were already stored when first generated; return a resolved promise
+    return { question: cached, storePromise: Promise.resolve('') };
   }
 
   const specificity = detectSpecificity(safeTopic);
@@ -836,14 +839,24 @@ export async function generateQuestion(
       clearTimeout(timeoutId);
       console.warn(`[dedup] duplicate question detected for topic="${safeTopic}" — retrying`);
       await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS));
-      return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext);
+      return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext, regionId);
     }
 
     recordDifficulty(roomId, validated.difficulty);
     addToCache(safeTopic, validated);
     const shuffled = shuffleOptions(validated);
     markServed(roomId, shuffled);
-    return shuffled;
+
+    // Phase 3 — persist to question bank (fire-and-forget, never block serving).
+    // We return the promise so the caller (gameState) can capture the DB id
+    // and set room.currentQuestionDbId once the write completes.
+    const storageRegion = regionId || 'global';
+    const storePromise = storeQuestion(shuffled, safeTopic, storageRegion).catch((e: any) => {
+      console.warn('[ai] Failed to store question:', e?.message);
+      return '';
+    });
+
+    return { question: shuffled, storePromise };
 
   } catch (err: any) {
     clearTimeout(timeoutId);
@@ -851,17 +864,17 @@ export async function generateQuestion(
 
     if (err?.message === "ALL_PROVIDERS_EXHAUSTED") {
       console.error("[exhausted] all providers failed — using static fallback pool");
-      return getRandomFallback();
+      return { question: getRandomFallback(), storePromise: Promise.resolve('') };
     }
 
     if (retries > 0 && err?.name !== "AbortError") {
       console.warn(`[retry] left=${retries} temp=${temperature.toFixed(2)} err="${err?.message}"`);
       await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS));
-      return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext);
+      return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext, regionId);
     }
 
     console.error("[exhausted]", err?.message);
-    return getRandomFallback();
+    return { question: getRandomFallback(), storePromise: Promise.resolve('') };
   }
 }
 // ---------------------------------------------------------------------------
@@ -902,7 +915,7 @@ export async function generateQuestionsForPresetMode(
     const entry = topicSequence[idx];
     // Small stagger between requests to avoid hammering the provider
     if (idx > 0) await new Promise(r => setTimeout(r, 120));
-    const question = await generateQuestion(
+    const { question, storePromise } = await generateQuestion(
       entry.topic,
       [],
       roomId,
@@ -911,6 +924,8 @@ export async function generateQuestionsForPresetMode(
       [...askedQuestions],   // snapshot so recursive retries inside generateQuestion don't mutate our list
       regionContext,
     );
+    // storePromise is fire-and-forget — preset mode doesn't need the DB id per question
+    storePromise.catch((e: any) => console.warn('[ai] preset storeQuestion failed:', e?.message));
     askedQuestions.push(question.text);
     results.push({ ...question, topic: question.canonicalTopic || entry.topic });
   }

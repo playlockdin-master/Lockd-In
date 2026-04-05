@@ -17,5 +17,5 @@ export const db = pool ? drizzle(pool, { schema }) : null;
 // Re-export tables for convenient imports elsewhere
 export {
   users, questions, games, gamePlayers,
-  gameRounds, roundAnswers, playerSeenQuestions,
+  userStats, userTopicStats,
 } from "@shared/schema";
