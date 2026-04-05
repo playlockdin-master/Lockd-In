@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto";
 
 // ── Structured logger ────────────────────────────────────────────────────────
 function ts() { return new Date().toISOString(); }
@@ -18,10 +19,10 @@ import {
 import {
   generateQuestion, generateTopicSuggestions, suggestSimilarTopic,
   TOPIC_DATASET, clearRoomCache, buildRegionContext,
-  generateQuestionsForPresetMode,
+  generateQuestionsForPresetMode, markServed,
 } from "./ai";
 import {
-  fetchQuestionFromBank,
+  fetchQuestionFromBank, fetchChooserSeenData,
   createGame, upsertGamePlayer, updateGamePlayerScore,
   finalizeGame, upsertUserStats, upsertUserTopicStats, updateQuestionStats,
 } from "./storage";
@@ -1039,6 +1040,7 @@ function resetRoomToLobby(room: Room, io: Server) {
   // instead of writing new rounds under the previous game's DB row.
   delete room.dbGameId;
   delete room.currentQuestionDbId;
+  delete room.currentQuestionTextHash;
   room.playAgainIds          = [];
   room.viewingResultsIds     = [];
   room.presetTopics          = {};
@@ -1187,13 +1189,27 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
   const regionCtxSnapshot = buildRegionContext(room.regionMode, room.regionId, room.countryCode);
   const regionId          = room.regionMode === 'regional' && room.regionId ? room.regionId : 'global';
 
+  // BUG A FIX: pass actual usedTopics (last 8) instead of hardcoded []
+  // so the AI knows which topic angles were already covered this session.
+  const recentAngles = (room.usedTopics ?? []).slice(-8);
+
   io.to(room.code).emit("gameState", serializeRoom(room));
+
+  // ── Fetch chooser's seen-question data for dedup (Options 2 + 3) ──────────
+  // The topic chooser is room.topicSelectorId. We look up their userId from
+  // room.players so we can query their personal seen_hashes from the DB.
+  // Guests (no userId) get null → DB fetch uses usage_count ordering only.
+  const chooserPlayer = room.players.find(p => p.id === room.topicSelectorId);
+  const chooserUserId = chooserPlayer?.userId ?? null;
+  const chooserSeen = chooserUserId
+    ? await fetchChooserSeenData(chooserUserId, topic).catch(() => undefined)
+    : undefined;
 
   // Phase 3 — try DB question bank before calling AI
   let servedFromDb = false;
 
   try {
-    const dbQuestion = await fetchQuestionFromBank(topic, regionId);
+    const dbQuestion = await fetchQuestionFromBank(topic, regionId, chooserSeen);
     if (dbQuestion) {
       const liveRoom = rooms.get(room.code);
       if (!liveRoom || liveRoom.currentRound !== roundSnapshot || liveRoom.status !== 'question') {
@@ -1201,20 +1217,36 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
         return;
       }
 
-      liveRoom.currentQuestion     = dbQuestion;
-      liveRoom.currentQuestionDbId = dbQuestion.dbId;
-      liveRoom.questionDeadline    = Date.now() + questionTimeMs(liveRoom);
-      if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
-      liveRoom.askedQuestions.push(dbQuestion.text);
-      if (dbQuestion.canonicalTopic?.trim()) liveRoom.currentTopic = dbQuestion.canonicalTopic.trim();
+      // BUG B FIX: check against in-session askedQuestions before accepting DB question.
+      // The old code served DB questions unconditionally, bypassing dedup entirely.
+      const alreadyAskedThisSession = (liveRoom.askedQuestions ?? []).some(
+        q => q.slice(0, 80).toLowerCase().trim() === dbQuestion.text.slice(0, 80).toLowerCase().trim()
+      );
 
-      liveRoom.questionParticipants = liveRoom.players.map(p => p.id);
-      liveRoom.roundPlayerIds       = [...liveRoom.questionParticipants];
+      if (alreadyAskedThisSession) {
+        // This DB question was already served this session — fall through to AI
+        log(`[db-bank] "${topic}" question already served this session — falling through to AI`);
+      } else {
+        liveRoom.currentQuestion         = dbQuestion;
+        liveRoom.currentQuestionDbId     = dbQuestion.dbId;
+        liveRoom.currentQuestionTextHash = dbQuestion.textHash;
+        liveRoom.questionDeadline        = Date.now() + questionTimeMs(liveRoom);
+        if (!liveRoom.askedQuestions) liveRoom.askedQuestions = [];
+        liveRoom.askedQuestions.push(dbQuestion.text);
+        if (dbQuestion.canonicalTopic?.trim()) liveRoom.currentTopic = dbQuestion.canonicalTopic.trim();
 
-      io.to(room.code).emit("gameState", serializeRoom(liveRoom));
-      setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
-      log(`[db-bank] Served question for "${topic}" from DB`);
-      servedFromDb = true;
+        liveRoom.questionParticipants = liveRoom.players.map(p => p.id);
+        liveRoom.roundPlayerIds       = [...liveRoom.questionParticipants];
+
+        // BUG C FIX: register this DB-served question in the in-memory dedup map
+        // so it won't be served again this session via the AI path either.
+        markServed(liveRoom.code, dbQuestion);
+
+        io.to(room.code).emit("gameState", serializeRoom(liveRoom));
+        setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
+        log(`[db-bank] Served question for "${topic}" from DB`);
+        servedFromDb = true;
+      }
     }
   } catch (dbErr: any) {
     warn(`DB question bank check failed: ${dbErr?.message} — falling through to AI`);
@@ -1224,7 +1256,10 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
   try {
     const { question, storePromise } = await generateQuestion(
-      topic, [], room.code, undefined,
+      topic,
+      recentAngles,  // BUG A FIX: was hardcoded []
+      room.code,
+      undefined,
       difficultyOverride as any,
       room.askedQuestions ?? [],
       regionCtxSnapshot,
@@ -1252,15 +1287,15 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     // Timer runs to completion
     setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
 
-    // Bug 1 fix — capture the DB id once storeQuestion resolves so
-    // proceedToResults can link this round to the correct questions row.
-    // storePromise is fire-and-forget (never blocks question serving).
+    // Capture DB id + textHash once storeQuestion resolves
     storePromise.then(dbId => {
       if (!dbId) return;
       const r = rooms.get(room.code);
-      // Only set if the room is still on the same question (same round, still in question phase)
       if (r && r.currentRound === roundSnapshot && r.status === 'question') {
         r.currentQuestionDbId = dbId;
+        // textHash for AI questions: compute same way storeQuestion does
+        const normalised = question.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+        r.currentQuestionTextHash = crypto.createHash('md5').update(normalised).digest('hex');
       }
     });
 
@@ -1294,7 +1329,11 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
       try {
         const { question: q2, storePromise: storePromise2 } = await generateQuestion(
-          replacementTopic, [], room.code, undefined, undefined,
+          replacementTopic,
+          (room.usedTopics ?? []).slice(-8),  // BUG A FIX here too
+          room.code,
+          undefined,
+          undefined,
           room.askedQuestions ?? [],
           buildRegionContext(stillLive.regionMode, stillLive.regionId, stillLive.countryCode),
           stillLive.regionId ?? 'global',
@@ -1311,12 +1350,13 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
         io.to(room.code).emit("gameState", serializeRoom(afterGen));
         setRoomTimer(room.code, () => { proceedToResults(afterGen, io); }, questionTimeMs(afterGen));
 
-        // Bug 1 fix — capture DB id for this fallback AI question
         storePromise2.then(dbId => {
           if (!dbId) return;
           const r = rooms.get(room.code);
           if (r && r.currentRound === roundSnapshot && r.status === 'question') {
             r.currentQuestionDbId = dbId;
+            const normalised2 = q2.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+            r.currentQuestionTextHash = crypto.createHash('md5').update(normalised2).digest('hex');
           }
         });
       } catch (innerErr) {
@@ -1427,14 +1467,16 @@ function proceedToResults(room: Room, io: Server) {
       playerAnswers: Object.fromEntries(
         Array.from(participants).map(pid => [pid, room.answers[pid]?.answerIndex ?? -2])
       ),
+      questionTextHash: room.currentQuestionTextHash ?? null,
     };
     if (!room.roundHistory) room.roundHistory = [];
     room.roundHistory.push(record);
   }
 
-  // Capture and clear questionDbId for per-question stats update
+  // Capture and clear questionDbId and textHash for per-question stats update
   const questionDbId = room.currentQuestionDbId;
-  room.currentQuestionDbId = undefined;
+  room.currentQuestionDbId     = undefined;
+  room.currentQuestionTextHash = undefined;
 
   // Per-question stats — count served and correct for this round (fire-and-forget)
   if (questionDbId) {
@@ -1516,7 +1558,9 @@ function endGame(room: Room, io: Server) {
       const userId = p.userId;
       let totalCorrect  = 0;
       let totalAnswered = 0;
-      const topicTally: Record<string, { answered: number; correct: number }> = {};
+      const topicTally: Record<string, { answered: number; correct: number; lastSeenHash?: string }> = {};
+      // Collect all question hashes served this game for the rolling window (Option 2)
+      const newSeenHashes: string[] = [];
 
       for (const round of room.roundHistory) {
         const answerIndex = round.playerAnswers[p.id];
@@ -1530,6 +1574,15 @@ function endGame(room: Room, io: Server) {
         if (!topicTally[round.topic]) topicTally[round.topic] = { answered: 0, correct: 0 };
         topicTally[round.topic].answered++;
         if (isCorrect) topicTally[round.topic].correct++;
+
+        // Option 3: track last hash per topic (overwrite each round — last one wins)
+        if (round.questionTextHash) {
+          topicTally[round.topic].lastSeenHash = round.questionTextHash;
+          // Option 2: add to rolling window (dedup in case same hash appears twice)
+          if (!newSeenHashes.includes(round.questionTextHash)) {
+            newSeenHashes.push(round.questionTextHash);
+          }
+        }
       }
 
       if (totalAnswered > 0) {
@@ -1538,7 +1591,7 @@ function endGame(room: Room, io: Server) {
           totalAnswered,
           bestStreak: Math.max(p.bestStreak ?? p.streak, 0),
           totalScore: p.score,
-        }).catch(e => warn(`upsertUserStats failed for ${userId}: ${e?.message}`));
+        }, newSeenHashes).catch(e => warn(`upsertUserStats failed for ${userId}: ${e?.message}`));
 
         upsertUserTopicStats(userId, topicTally)
           .catch(e => warn(`upsertUserTopicStats failed for ${userId}: ${e?.message}`));
