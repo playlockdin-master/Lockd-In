@@ -206,19 +206,49 @@ export async function registerRoutes(
           })
           .from(userStats)
           .innerJoin(users, eq(userStats.userId, users.id))
+          .where(sql`${userStats.totalScore} > 0`)
           .orderBy(desc(userStats.totalScore))
           .limit(50);
         res.json({ leaderboard: rows, period });
         return;
       }
 
-      // Time-filtered path — aggregate from game_players joined with games
-      const intervalMap: Record<string, string> = {
-        daily:   "1 day",
-        weekly:  "7 days",
-        monthly: "30 days",
-      };
-      const interval = intervalMap[period] ?? "7 days";
+      // Time-filtered path — aggregate from game_players joined with games.
+      //
+      // We use calendar-aligned boundaries in the user's local timezone, NOT
+      // rolling windows like "now() - interval '1 day'".
+      //
+      // The client sends tzOffset = new Date().getTimezoneOffset() which is
+      // minutes BEHIND UTC (e.g. IST = -330, EST = 300).  We convert that to
+      // a signed offset string Postgres understands (e.g. "+05:30", "-05:00").
+      const rawOffset = parseInt(req.query.tzOffset as string, 10);
+      const tzOffsetMins = isNaN(rawOffset) ? 0 : Math.max(-840, Math.min(840, rawOffset));
+
+      // getTimezoneOffset() returns minutes-behind, so IST (UTC+5:30) = -330.
+      // We negate to get the actual UTC+ offset.
+      const offsetMins   = -tzOffsetMins;
+      const sign         = offsetMins >= 0 ? "+" : "-";
+      const absHH        = String(Math.floor(Math.abs(offsetMins) / 60)).padStart(2, "0");
+      const absMM        = String(Math.abs(offsetMins) % 60).padStart(2, "0");
+      const pgTzInterval = `${sign}${absHH}:${absMM}`; // e.g. "+05:30"
+
+      // Compute the start of the requested calendar period in the user's
+      // timezone, expressed as a UTC timestamp for the WHERE clause.
+      //   - daily:   midnight of today (local)
+      //   - weekly:  most recent Monday midnight (local)
+      //   - monthly: 1st of the current month midnight (local)
+      let periodStartExpr: string;
+      if (period === "daily") {
+        // date_trunc('day', now() AT TIME ZONE tz) gives midnight in local tz,
+        // then cast back to timestamptz with the tz applied.
+        periodStartExpr = `(date_trunc('day', now() AT TIME ZONE INTERVAL '${pgTzInterval}') AT TIME ZONE INTERVAL '${pgTzInterval}')`;
+      } else if (period === "weekly") {
+        // date_trunc('week', ...) truncates to Monday 00:00 per ISO-8601
+        periodStartExpr = `(date_trunc('week', now() AT TIME ZONE INTERVAL '${pgTzInterval}') AT TIME ZONE INTERVAL '${pgTzInterval}')`;
+      } else {
+        // monthly
+        periodStartExpr = `(date_trunc('month', now() AT TIME ZONE INTERVAL '${pgTzInterval}') AT TIME ZONE INTERVAL '${pgTzInterval}')`;
+      }
 
       const rows = await db
         .select({
@@ -232,7 +262,10 @@ export async function registerRoutes(
         .from(gamePlayers)
         .innerJoin(games, eq(gamePlayers.gameId, games.id))
         .innerJoin(users, eq(gamePlayers.userId, users.id))
-        .where(sql`${gamePlayers.userId} is not null and ${games.startedAt} >= now() - interval '${sql.raw(interval)}'`)
+        .where(
+          sql`${gamePlayers.userId} is not null
+              and ${games.startedAt} >= ${sql.raw(periodStartExpr)}`
+        )
         .groupBy(gamePlayers.userId, users.id)
         .orderBy(desc(sql`sum(${gamePlayers.finalScore})`))
         .limit(50);

@@ -53,7 +53,11 @@ function GlobalLeaderboard({ currentUserId }: { currentUserId?: string }) {
 
   useEffect(() => {
     setBusy(true);
-    fetch(`/api/leaderboard/global?period=${period}`)
+    // Send the user's UTC offset (in minutes) so the server can compute
+    // calendar-aligned boundaries (midnight, week-start, month-start) in their
+    // local timezone rather than using rolling 24h/7d/30d windows.
+    const tzOffset = new Date().getTimezoneOffset(); // minutes behind UTC (negative = ahead)
+    fetch(`/api/leaderboard/global?period=${period}&tzOffset=${tzOffset}`)
       .then(r => r.json())
       .then(d => setRows(d.leaderboard ?? []))
       .catch(console.error)
