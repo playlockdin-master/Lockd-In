@@ -7,7 +7,7 @@ import { ParticleBackground } from "@/components/ParticleBackground";
 import { AudioController } from "@/components/AudioController";
 import { AvatarPicker } from "@/components/Avatar";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gamepad2, Hash, User, Ban, LogOut, LogIn, CheckCircle, Trophy, LayoutDashboard } from "lucide-react";
+import { Gamepad2, Hash, User, Ban, LogIn, CheckCircle } from "lucide-react";
 import { useAudioSystem } from "@/hooks/use-audio";
 import { validatePlayerName } from "@/lib/validate";
 import { useAuth } from "@/hooks/use-auth";
@@ -82,47 +82,29 @@ export default function Home() {
   };
 
   return (
-    <div className="relative p-4 flex items-center justify-center" style={{ minHeight: "100dvh" }}>
+    <div className="relative p-4 pb-24 md:pb-4 flex items-center justify-center" style={{ minHeight: "100dvh" }}>
       <ParticleBackground />
 
-      {/* Top bar */}
+      {/* Top bar — compact: G sign-in icon + audio */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-        {/* Leaderboard link — always visible */}
-        <button
-          onClick={() => setLocation("/leaderboard")}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white/50 hover:text-white/80 transition-colors glass-panel"
-        >
-          <Trophy className="w-3.5 h-3.5" />
-          Leaderboard
-        </button>
-
         {!loading && (
           user ? (
-            <motion.div
+            <motion.button
               initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2"
+              onClick={() => setLocation("/dashboard")}
+              className="w-9 h-9 rounded-full glass-panel border border-white/10 hover:border-teal-400/40 transition-all flex items-center justify-center"
+              title={`Signed in as ${user.username}`}
             >
-              <button
-                onClick={() => setLocation("/dashboard")}
-                className="flex items-center gap-2 glass-panel px-3 py-1.5 rounded-full hover:border-teal-400/40 transition-all border border-white/10"
-              >
-                <LayoutDashboard className="w-3.5 h-3.5 text-teal-400" />
-                <span className="text-white/80 text-xs font-semibold">{user.username}</span>
-              </button>
-              <button
-                onClick={logout}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-white/50 hover:text-white/80 transition-colors glass-panel"
-                title="Sign out"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Sign out
-              </button>
-            </motion.div>
+              <span className="text-[10px] font-bold text-teal-400">
+                {user.username.slice(0, 2).toUpperCase()}
+              </span>
+            </motion.button>
           ) : (
             <motion.button
               initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
               onClick={login}
-              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white glass-panel hover:border-teal-400/50 transition-all border border-white/10"
+              className="w-9 h-9 rounded-full glass-panel border border-white/10 hover:border-teal-400/40 transition-all flex items-center justify-center"
+              title="Sign in with Google"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -130,7 +112,6 @@ export default function Home() {
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
-              Sign in with Google
             </motion.button>
           )
         )}

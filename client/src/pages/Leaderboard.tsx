@@ -196,7 +196,7 @@ export default function Leaderboard() {
   const selectedTopicLabel = activeTab === "global" ? null : activeTab;
 
   return (
-    <div className="relative min-h-screen p-4 pb-10">
+    <div className="relative min-h-screen p-4 pb-24 md:pb-10">
       <ParticleBackground />
 
       <div className="relative z-10 max-w-2xl mx-auto">
@@ -209,7 +209,7 @@ export default function Leaderboard() {
         >
           <button
             onClick={() => setLocation("/")}
-            className="p-2 rounded-xl glass-panel text-white/50 hover:text-white transition-colors"
+            className="hidden md:flex p-2 rounded-xl glass-panel text-white/50 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -222,7 +222,7 @@ export default function Leaderboard() {
           {user && (
             <button
               onClick={() => setLocation("/dashboard")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel text-teal-400 hover:text-teal-300 text-xs font-semibold transition-colors border border-teal-400/20"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel text-teal-400 hover:text-teal-300 text-xs font-semibold transition-colors border border-teal-400/20"
             >
               <LayoutDashboard className="w-3.5 h-3.5" />Dashboard
             </button>

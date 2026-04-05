@@ -2,6 +2,7 @@ import { Switch, Route } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import { AudioProvider } from "@/hooks/use-audio.tsx";
 import NotFound from "@/pages/not-found";
+import { BottomNav } from "@/components/BottomNav";
 
 // Pages
 import Home from "@/pages/Home";
@@ -28,6 +29,7 @@ function App() {
     <AudioProvider>
       <Toaster />
       <Router />
+      <BottomNav />
     </AudioProvider>
   );
 }
