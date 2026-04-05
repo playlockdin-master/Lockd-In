@@ -4,10 +4,10 @@ import { Home, Trophy, BarChart2, User } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 const tabs = [
-  { path: "/",            icon: Home,     label: "Home"       },
-  { path: "/leaderboard", icon: Trophy,   label: "Leaderboard" },
-  { path: "/dashboard",   icon: BarChart2, label: "Stats"      },
-  { path: "/dashboard",   icon: User,     label: "Profile",  isProfile: true },
+  { path: "/",            icon: Home,      label: "Home"        },
+  { path: "/leaderboard", icon: Trophy,    label: "Leaderboard" },
+  { path: "/dashboard",   icon: BarChart2, label: "Stats",      isStats: true },
+  { path: "/dashboard",   icon: User,      label: "Profile",    isProfile: true },
 ];
 
 export function BottomNav() {
@@ -17,8 +17,8 @@ export function BottomNav() {
   // Don't show in game rooms
   if (location.startsWith("/room/") || location === "/kicked") return null;
 
-  const isActive = (path: string, isProfile?: boolean) => {
-    if (isProfile) return location === "/dashboard";
+  const isActive = (path: string, isProfile?: boolean, isStats?: boolean) => {
+    if (isProfile || isStats) return location === "/dashboard";
     if (path === "/") return location === "/";
     return location.startsWith(path);
   };
@@ -34,9 +34,10 @@ export function BottomNav() {
       }}
     >
       <div className="flex items-center justify-around px-2 pt-2 pb-2">
-        {tabs.map(({ path, icon: Icon, label, isProfile }) => {
-          const active = isActive(path, isProfile);
-          const navigateTo = isProfile ? "/dashboard" : path;
+        {tabs.map(({ path, icon: Icon, label, isProfile, isStats }) => {
+          const active = isActive(path, isProfile, isStats);
+          const navigateTo = (isProfile || isStats) ? "/dashboard" : path;
+          const showGuestDot = !user && (isProfile || isStats);
 
           return (
             <button
@@ -75,8 +76,8 @@ export function BottomNav() {
                 />
               )}
 
-              {/* Notification dot for unsigned-in profile */}
-              {isProfile && !user && (
+              {/* Dot nudge for guests on stats/profile tabs */}
+              {showGuestDot && (
                 <span
                   className="absolute top-1 right-3 w-1.5 h-1.5 rounded-full"
                   style={{ background: "#2dd4bf" }}
