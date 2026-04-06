@@ -1461,6 +1461,13 @@ function proceedToResults(room: Room, io: Server) {
   // Record this round for the share card — captures every player's answer
   // regardless of when they joined/disconnected, giving a room-level history.
   if (room.currentTopic) {
+    // Bug 1 fix: track used topics so AI avoids repeating the same angles.
+    // Cap at 20 so recentAngles stays relevant and the array doesn't grow unbounded.
+    if (!room.usedTopics.includes(room.currentTopic)) {
+      room.usedTopics.push(room.currentTopic);
+      if (room.usedTopics.length > 20) room.usedTopics.shift();
+    }
+
     const record: RoundRecord = {
       topic: room.currentTopic,
       correctIndex,

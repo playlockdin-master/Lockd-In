@@ -65,7 +65,17 @@ export async function storeQuestion(
 
   const normalised = q.text.toLowerCase().replace(/[^a-z0-9]/g, '');
   const textHash = crypto.createHash('md5').update(normalised).digest('hex');
-  const canonicalTopic = q.canonicalTopic ?? rawTopic;
+
+  // Bug 4 fix: normalize canonicalTopic to Title Case before storing.
+  // AI providers return inconsistent casing ("physics", "Physics", "General Physics").
+  // The unique index on (canonical_topic, text_hash) is case-sensitive, so without
+  // normalization "physics" and "Physics" are different keys and duplicate questions
+  // can be stored under different casings. Normalization here + lower() in fetch queries
+  // ensures a consistent single key per topic across all providers.
+  const rawCanonical = (q.canonicalTopic ?? rawTopic).trim();
+  const canonicalTopic = rawCanonical.replace(/\w\S*/g, w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  );
 
   const rows = await db
     .insert(questions)

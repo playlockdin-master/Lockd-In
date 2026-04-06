@@ -501,42 +501,7 @@ function shuffleOptions(q: Question): Question {
   return { ...q, options: idx.map((i) => q.options[i]), correctIndex: idx.indexOf(q.correctIndex) };
 }
 
-// ---------------------------------------------------------------------------
-// IN-MEMORY TOPIC CACHE
-// ---------------------------------------------------------------------------
-
-const CACHE_TTL_MS = 30 * 60 * 1000;
-const CACHE_MAX_QS = 5;
-
-interface CacheEntry { questions: Question[]; cursor: number; expiresAt: number; }
-const questionCache = new Map<string, CacheEntry>();
-
-function cacheKey(topic: string) { return topic.toLowerCase().trim(); }
-
-function getCached(topic: string, roomId: string): Question | null {
-  const key   = cacheKey(topic);
-  const entry = questionCache.get(key);
-  if (!entry || Date.now() > entry.expiresAt) { questionCache.delete(key); return null; }
-  const total = entry.questions.length;
-  for (let i = 0; i < total; i++) {
-    const q = entry.questions[(entry.cursor + i) % total];
-    if (!hasBeenServed(roomId, q)) {
-      entry.cursor = (entry.cursor + i + 1) % total;
-      return q;
-    }
-  }
-  return null;
-}
-
-function addToCache(topic: string, q: Question): void {
-  const key   = cacheKey(topic);
-  const entry = questionCache.get(key);
-  if (entry && Date.now() <= entry.expiresAt) {
-    if (entry.questions.length < CACHE_MAX_QS) entry.questions.push(q);
-  } else {
-    questionCache.set(key, { questions: [q], cursor: 0, expiresAt: Date.now() + CACHE_TTL_MS });
-  }
-}
+// IN-MEMORY TOPIC CACHE REMOVED — see clearRoomCache below
 
 // ---------------------------------------------------------------------------
 // PER-ROOM QUESTION DEDUPLICATION
@@ -572,16 +537,13 @@ export function markServed(roomId: string, q: Question): void {
 // Clears:
 //   • roomSeenQuestions      — so questions from the last game aren't blocked as "already seen"
 //   • roomDifficultyHistory  — so difficulty distribution starts fresh each game
-//   • questionCache entries  — busts cached questions for topics used in this room
-//                              so the next game generates fresh questions instead of replaying old ones
+//   • (in-memory question cache removed — DB handles staleness via usage_count)
 // ---------------------------------------------------------------------------
 
 export function clearRoomCache(roomId: string, usedTopics: string[]): void {
   roomSeenQuestions.delete(roomId);
   roomDifficultyHistory.delete(roomId);
-  for (const topic of usedTopics) {
-    questionCache.delete(cacheKey(topic));
-  }
+  // (in-memory question cache removed — DB bank serves as cache)
 }
 
 // ---------------------------------------------------------------------------
@@ -789,15 +751,9 @@ export async function generateQuestion(
 ): Promise<{ question: Question; storePromise: Promise<string> }> {
   const safeTopic = sanitizeTopic(topic);
 
-  // Cache hit — serve instantly, zero API cost
-  // Note: region-aware questions bypass the cache to avoid cross-region pollution
-  const cached = !regionContext ? getCached(safeTopic, roomId) : null;
-  if (cached) {
-    console.log(`[cache] hit topic="${safeTopic}" room="${roomId}"`);
-    markServed(roomId, cached);
-    // Cache hits were already stored when first generated; return a resolved promise
-    return { question: cached, storePromise: Promise.resolve('') };
-  }
+  // In-memory topic cache removed — question selection goes DB → AI fallback.
+  // The DB bank with usage_count ordering serves as the cache; this eliminates
+  // cross-room repetition that occurred when Room A's question was served to Room B.
 
   const specificity = detectSpecificity(safeTopic);
   const difficulty  = difficultyOverride ?? getTargetDifficulty(roomId);
@@ -843,7 +799,7 @@ export async function generateQuestion(
     }
 
     recordDifficulty(roomId, validated.difficulty);
-    addToCache(safeTopic, validated);
+    // (cache removed — question stored in DB via storeQuestion above)
     const shuffled = shuffleOptions(validated);
     markServed(roomId, shuffled);
 
