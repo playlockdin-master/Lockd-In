@@ -74,6 +74,11 @@ export const userStats = pgTable('user_stats', {
   bestStreak:    integer('best_streak').notNull().default(0),
   totalScore:    integer('total_score').notNull().default(0),
   updatedAt:     timestamp('updated_at').notNull().defaultNow(),
+  // ── Dedup Option 2: rolling window of last 500 question text_hashes seen ──
+  // Stored as a jsonb array of MD5 strings (matching questions.text_hash).
+  // Capped at 500 entries; oldest entries are dropped when the cap is reached.
+  // Enables cross-session repeat prevention without a separate join table.
+  seenHashes:    jsonb('seen_hashes').notNull().default([]).$type<string[]>(),
 });
 
 export const userTopicStats = pgTable('user_topic_stats', {
@@ -81,6 +86,10 @@ export const userTopicStats = pgTable('user_topic_stats', {
   topic:         text('topic').notNull(),
   totalAnswered: integer('total_answered').notNull().default(0),
   totalCorrect:  integer('total_correct').notNull().default(0),
+  // ── Dedup Option 3: last question hash served to this user for this topic ──
+  // Prevents immediately re-serving the same question on consecutive rounds
+  // of the same topic, even across different game sessions.
+  lastSeenHash:  text('last_seen_hash'),
 }, t => ({
   pk:      primaryKey({ columns: [t.userId, t.topic] }),
   userIdx: index('uts_user_idx').on(t.userId),
@@ -289,6 +298,7 @@ export interface RoundRecord {
   topic: string;
   correctIndex: number;
   playerAnswers: Record<string, number>;
+  questionTextHash?: string | null; // text_hash of the question served this round (for dedup tracking)
 }
 
 export interface Room {
@@ -324,4 +334,5 @@ export interface Room {
   roundHistory?: RoundRecord[];
   dbGameId?: string;
   currentQuestionDbId?: string;
+  currentQuestionTextHash?: string | null; // text_hash of current question (for dedup seen-hash tracking)
 }

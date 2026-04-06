@@ -12,11 +12,16 @@ function hasDb(d: typeof db): d is NonNullable<typeof db> {
   return d !== null;
 }
 
+// ── Option 4 config: minimum question pool size before falling back to AI ─────
+const MIN_POOL_SIZE = 3;
+
+// ── Option 2 config: rolling seen-hash window size per user ───────────────────
+const MAX_SEEN_HASHES = 500;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // USER METHODS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Find a user by OAuth provider + provider user id. Returns null if not found. */
 export async function findUserByOAuth(
   provider: string,
   oauthId: string,
@@ -30,21 +35,18 @@ export async function findUserByOAuth(
   return rows[0] ?? null;
 }
 
-/** Find a user by their internal UUID. */
 export async function findUserById(id: string): Promise<DbUser | null> {
   if (!hasDb(db)) return null;
   const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return rows[0] ?? null;
 }
 
-/** Create a new user row. Returns the created user. */
 export async function createUser(data: NewUser): Promise<DbUser> {
   if (!hasDb(db)) throw new Error("Database not configured");
   const rows = await db.insert(users).values(data).returning();
   return rows[0];
 }
 
-/** Touch last_seen_at on login. */
 export async function touchUserLastSeen(id: string): Promise<void> {
   if (!hasDb(db)) return;
   await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, id));
@@ -54,7 +56,6 @@ export async function touchUserLastSeen(id: string): Promise<void> {
 // QUESTION BANK METHODS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Store a newly AI-generated question in the bank. Returns empty string on duplicate. */
 export async function storeQuestion(
   q: Question,
   rawTopic: string,
@@ -62,7 +63,6 @@ export async function storeQuestion(
 ): Promise<string> {
   if (!hasDb(db)) return "";
 
-  // Compute normalised MD5 hash for deduplication
   const normalised = q.text.toLowerCase().replace(/[^a-z0-9]/g, '');
   const textHash = crypto.createHash('md5').update(normalised).digest('hex');
   const canonicalTopic = q.canonicalTopic ?? rawTopic;
@@ -84,23 +84,82 @@ export async function storeQuestion(
     .onConflictDoNothing()
     .returning({ id: questions.id });
 
-  // Returns empty string when conflict (duplicate silently skipped)
   return rows[0]?.id ?? "";
 }
 
-/**
- * Fetch a random question from the bank for a given topic using smart ordering.
- * Prefers questions not used recently and with lower usage counts.
- * Returns null if no suitable question exists.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// CHOOSER DEDUP CONTEXT
+// Single JOIN query fetching both Option 2 (seenHashes) and Option 3
+// (lastSeenHash for this topic) for the topic chooser in one DB round-trip.
+// Returns empty fallback gracefully for guests or when DB is unavailable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ChooserSeenData {
+  seenHashes: string[];        // Option 2: rolling window (up to 500 MD5 hashes)
+  lastSeenHash: string | null; // Option 3: last hash served for this specific topic
+}
+
+export async function fetchChooserSeenData(
+  chooserUserId: string,
+  topic: string,
+): Promise<ChooserSeenData> {
+  const fallback: ChooserSeenData = { seenHashes: [], lastSeenHash: null };
+  if (!hasDb(db) || !chooserUserId) return fallback;
+
+  try {
+    const rows = await db
+      .select({
+        seenHashes:   userStats.seenHashes,
+        lastSeenHash: userTopicStats.lastSeenHash,
+      })
+      .from(userStats)
+      .leftJoin(
+        userTopicStats,
+        and(
+          eq(userTopicStats.userId, userStats.userId),
+          sql`lower(${userTopicStats.topic}) = lower(${topic})`,
+        ),
+      )
+      .where(eq(userStats.userId, chooserUserId))
+      .limit(1);
+
+    if (!rows[0]) return fallback;
+    return {
+      seenHashes:   (rows[0].seenHashes as string[]) ?? [],
+      lastSeenHash: rows[0].lastSeenHash ?? null,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FETCH FROM QUESTION BANK
+//
+// Option 4 — Pool floor:
+//   Returns null if topic has < MIN_POOL_SIZE questions, forcing AI generation
+//   and organic pool growth.
+//
+// Options 2 + 3 — Chooser exclusion:
+//   Excludes questions whose text_hash the chooser has seen (rolling window)
+//   or seen last for this topic. Policy: "unseen by topic chooser" — their
+//   home-field advantage is only valid if the question is fresh for them.
+//   Guests get variety via usage_count ordering (graceful degradation).
+//
+// Returns the question with its textHash so gameState can store it in
+// roundHistory for later writing to seenHashes / lastSeenHash.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function fetchQuestionFromBank(
   topic: string,
   region: string,
-): Promise<(Question & { dbId: string }) | null> {
+  chooserSeen?: ChooserSeenData,
+): Promise<(Question & { dbId: string; textHash: string | null }) | null> {
   if (!hasDb(db)) return null;
 
-  const rows = await db
-    .select()
+  // Option 4: pool floor — skip DB if topic pool is too thin
+  const countRows = await db
+    .select({ count: sql<number>`count(*)::int` })
     .from(questions)
     .where(
       and(
@@ -108,19 +167,64 @@ export async function fetchQuestionFromBank(
         sql`(${questions.region} = ${region} OR ${questions.region} = 'global')`,
         eq(questions.isActive, true),
       )
-    )
-    .orderBy(
-      sql`CASE WHEN ${questions.lastUsedAt} > NOW() - INTERVAL '1 hour' THEN 0 ELSE 1 END DESC`,
-      questions.usageCount,
-      sql`RANDOM()`,
-    )
+    );
+
+  const poolSize = countRows[0]?.count ?? 0;
+  if (poolSize < MIN_POOL_SIZE) return null;
+
+  // Build exclusion set from chooser's seen hashes (Options 2 + 3)
+  const excludeSet = new Set<string>();
+  if (chooserSeen) {
+    for (const h of chooserSeen.seenHashes) {
+      if (h) excludeSet.add(h);
+    }
+    if (chooserSeen.lastSeenHash) excludeSet.add(chooserSeen.lastSeenHash);
+  }
+
+  const baseWhere = and(
+    sql`lower(${questions.canonicalTopic}) = lower(${topic})`,
+    sql`(${questions.region} = ${region} OR ${questions.region} = 'global')`,
+    eq(questions.isActive, true),
+  );
+
+  const whereWithExclusion = excludeSet.size > 0
+    ? and(
+        baseWhere,
+        sql`(${questions.textHash} IS NULL OR ${questions.textHash} NOT IN (${sql.join(
+          [...excludeSet].map(h => sql`${h}`),
+          sql`, `,
+        )}))`,
+      )
+    : baseWhere;
+
+  const orderBy = [
+    sql`CASE WHEN ${questions.lastUsedAt} > NOW() - INTERVAL '1 hour' THEN 0 ELSE 1 END DESC`,
+    questions.usageCount,
+    sql`RANDOM()`,
+  ] as const;
+
+  let rows = await db
+    .select()
+    .from(questions)
+    .where(whereWithExclusion)
+    .orderBy(...orderBy)
     .limit(1);
 
-  if (!rows[0]) return null;
+  // All chooser-unseen questions exhausted — fall back without exclusion
+  // so the round always gets a question (better a repeat than a broken round)
+  if (!rows[0] && excludeSet.size > 0) {
+    rows = await db
+      .select()
+      .from(questions)
+      .where(baseWhere)
+      .orderBy(...orderBy)
+      .limit(1);
+  }
 
+  if (!rows[0]) return null;
   const row = rows[0];
 
-  // Fire-and-forget: bump usage count and last_used_at
+  // Bump usage count fire-and-forget
   db!
     .update(questions)
     .set({
@@ -132,6 +236,7 @@ export async function fetchQuestionFromBank(
 
   return {
     dbId:           row.id,
+    textHash:       row.textHash ?? null,
     text:           row.text,
     options:        row.options as string[],
     correctIndex:   row.correctIndex,
@@ -142,18 +247,21 @@ export async function fetchQuestionFromBank(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// USER STATS METHODS (Part 2)
+// USER STATS METHODS
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Upsert aggregate stats for a user after a game ends.
- * Increments totals and keeps the maximum best streak.
+ * newSeenHashes: text_hash values of questions served this game (Option 2).
+ * Uses atomic SQL append+trim to avoid read-modify-write race conditions.
  */
 export async function upsertUserStats(
   userId: string,
   stats: { totalCorrect: number; totalAnswered: number; bestStreak: number; totalScore: number },
+  newSeenHashes: string[] = [],
 ): Promise<void> {
   if (!hasDb(db) || !userId) return;
+
   await db
     .insert(userStats)
     .values({
@@ -164,6 +272,7 @@ export async function upsertUserStats(
       bestStreak:    stats.bestStreak,
       totalScore:    stats.totalScore,
       updatedAt:     new Date(),
+      seenHashes:    newSeenHashes,
     })
     .onConflictDoUpdate({
       target: userStats.userId,
@@ -174,38 +283,59 @@ export async function upsertUserStats(
         bestStreak:    sql`GREATEST(${userStats.bestStreak}, EXCLUDED.best_streak)`,
         totalScore:    sql`${userStats.totalScore} + EXCLUDED.total_score`,
         updatedAt:     new Date(),
+        // Atomic append + trim — no application-level read needed
+        seenHashes: newSeenHashes.length > 0
+          ? sql`(
+              SELECT jsonb_agg(h ORDER BY rn DESC)
+              FROM (
+                SELECT h, row_number() OVER () AS rn
+                FROM jsonb_array_elements_text(
+                  COALESCE(${userStats.seenHashes}, '[]'::jsonb) ||
+                  ${JSON.stringify(newSeenHashes)}::jsonb
+                ) AS h
+              ) sub
+              LIMIT ${MAX_SEEN_HASHES}
+            )`
+          : userStats.seenHashes,
       },
     });
 }
 
 /**
  * Upsert per-topic stats for a user after a game ends.
+ * topicTally may include lastSeenHash (Option 3) — the text_hash of the
+ * last question served for each topic this game.
  */
 export async function upsertUserTopicStats(
   userId: string,
-  topicTally: Record<string, { answered: number; correct: number }>,
+  topicTally: Record<string, { answered: number; correct: number; lastSeenHash?: string }>,
 ): Promise<void> {
   if (!hasDb(db) || !userId) return;
   const entries = Object.entries(topicTally);
   if (entries.length === 0) return;
 
-  const rows = entries.map(([topic, counts]) => ({
-    userId,
-    topic,
-    totalAnswered: counts.answered,
-    totalCorrect:  counts.correct,
-  }));
-
-  await db
-    .insert(userTopicStats)
-    .values(rows)
-    .onConflictDoUpdate({
-      target: [userTopicStats.userId, userTopicStats.topic],
-      set: {
-        totalAnswered: sql`${userTopicStats.totalAnswered} + EXCLUDED.total_answered`,
-        totalCorrect:  sql`${userTopicStats.totalCorrect} + EXCLUDED.total_correct`,
-      },
-    });
+  for (const [topic, counts] of entries) {
+    await db
+      .insert(userTopicStats)
+      .values({
+        userId,
+        topic,
+        totalAnswered: counts.answered,
+        totalCorrect:  counts.correct,
+        lastSeenHash:  counts.lastSeenHash ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [userTopicStats.userId, userTopicStats.topic],
+        set: {
+          totalAnswered: sql`${userTopicStats.totalAnswered} + EXCLUDED.total_answered`,
+          totalCorrect:  sql`${userTopicStats.totalCorrect} + EXCLUDED.total_correct`,
+          // Option 3: always overwrite with the most recently seen hash
+          lastSeenHash: counts.lastSeenHash
+            ? sql`EXCLUDED.last_seen_hash`
+            : userTopicStats.lastSeenHash,
+        },
+      });
+  }
 }
 
 /**
@@ -230,7 +360,6 @@ export async function updateQuestionStats(
 // GAME HISTORY METHODS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Create a game record when a game starts. Returns the new game's id. */
 export async function createGame(data: {
   roomCode: string;
   mode: string;
@@ -242,13 +371,11 @@ export async function createGame(data: {
   return rows[0]?.id ?? "";
 }
 
-/** Mark a game as finished. */
 export async function finalizeGame(gameId: string): Promise<void> {
   if (!hasDb(db) || !gameId) return;
   await db.update(games).set({ endedAt: new Date() }).where(eq(games.id, gameId));
 }
 
-/** Upsert a player's participation record. Call on join; update on game end. */
 export async function upsertGamePlayer(data: {
   gameId:     string;
   userId?:    string | null;
@@ -273,7 +400,6 @@ export async function upsertGamePlayer(data: {
   return rows[0]?.id ?? "";
 }
 
-/** Update final score + streak for a player at game end. */
 export async function updateGamePlayerScore(
   gameId: string,
   playerName: string,
@@ -287,7 +413,6 @@ export async function updateGamePlayerScore(
     .where(and(eq(gamePlayers.gameId, gameId), eq(gamePlayers.playerName, playerName)));
 }
 
-/** Attach a real userId to guest game_players rows after login. */
 export async function claimGuestGameRows(
   playerName: string,
   userId: string,
@@ -297,4 +422,19 @@ export async function claimGuestGameRows(
     .update(gamePlayers)
     .set({ userId })
     .where(and(eq(gamePlayers.playerName, playerName), sql`${gamePlayers.userId} IS NULL`));
+}
+
+export async function isUsernameTaken(username: string): Promise<boolean> {
+  if (!hasDb(db)) return false;
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`lower(${users.username}) = lower(${username})`)
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function updateUserAvatar(id: string, avatarId: string): Promise<void> {
+  if (!hasDb(db)) return;
+  await db.update(users).set({ avatarId }).where(eq(users.id, id));
 }

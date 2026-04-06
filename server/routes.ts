@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { setupGameSockets } from "./gameState";
 import { db, users, gamePlayers, games } from "./db";
+import { updateUserAvatar } from "./storage";
 import { userStats, userTopicStats } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 
@@ -184,26 +185,96 @@ export async function registerRoutes(
 
   /**
    * GET /api/leaderboard/global
-   * Top 50 players by total score — joins user_stats + users.
+   * Top 50 players by total score.
+   * ?period=daily|weekly|monthly|alltime  (default: alltime)
    */
   app.get("/api/leaderboard/global", async (req, res) => {
     if (!db) { res.json({ error: "DB not configured" }); return; }
+    const period = (req.query.period as string) || "alltime";
+
     try {
+      if (period === "alltime") {
+        // Query game_players directly (same source as the other periods)
+        // so alltime is always consistent with what daily/weekly/monthly show.
+        // Avoids any user_stats sync issues.
+        const rows = await db
+          .select({
+            userId:     gamePlayers.userId,
+            username:   users.username,
+            avatarId:   users.avatarId,
+            totalScore: sql<number>`cast(sum(${gamePlayers.finalScore}) as int)`,
+            totalGames: sql<number>`cast(count(distinct ${gamePlayers.gameId}) as int)`,
+            bestStreak: sql<number>`cast(max(${gamePlayers.bestStreak}) as int)`,
+          })
+          .from(gamePlayers)
+          .innerJoin(games, eq(gamePlayers.gameId, games.id))
+          .innerJoin(users, eq(gamePlayers.userId, users.id))
+          .where(sql`${gamePlayers.userId} is not null`)
+          .groupBy(gamePlayers.userId, users.id)
+          .orderBy(desc(sql`sum(${gamePlayers.finalScore})`))
+          .limit(50);
+        res.json({ leaderboard: rows, period });
+        return;
+      }
+
+      // Time-filtered path — aggregate from game_players joined with games.
+      //
+      // We use calendar-aligned boundaries in the user's local timezone, NOT
+      // rolling windows like "now() - interval '1 day'".
+      //
+      // The client sends tzOffset = new Date().getTimezoneOffset() which is
+      // minutes BEHIND UTC (e.g. IST = -330, EST = 300).  We convert that to
+      // a signed offset string Postgres understands (e.g. "+05:30", "-05:00").
+      const rawOffset = parseInt(req.query.tzOffset as string, 10);
+      const tzOffsetMins = isNaN(rawOffset) ? 0 : Math.max(-840, Math.min(840, rawOffset));
+
+      // getTimezoneOffset() returns minutes-behind, so IST (UTC+5:30) = -330.
+      // We negate to get the actual UTC+ offset.
+      const offsetMins   = -tzOffsetMins;
+      const sign         = offsetMins >= 0 ? "+" : "-";
+      const absHH        = String(Math.floor(Math.abs(offsetMins) / 60)).padStart(2, "0");
+      const absMM        = String(Math.abs(offsetMins) % 60).padStart(2, "0");
+      const pgTzInterval = `${sign}${absHH}:${absMM}`; // e.g. "+05:30"
+
+      // Compute the start of the requested calendar period in the user's
+      // timezone, expressed as a UTC timestamp for the WHERE clause.
+      //   - daily:   midnight of today (local)
+      //   - weekly:  most recent Monday midnight (local)
+      //   - monthly: 1st of the current month midnight (local)
+      let periodStartExpr: string;
+      if (period === "daily") {
+        // date_trunc('day', now() AT TIME ZONE tz) gives midnight in local tz,
+        // then cast back to timestamptz with the tz applied.
+        periodStartExpr = `(date_trunc('day', now() AT TIME ZONE INTERVAL '${pgTzInterval}') AT TIME ZONE INTERVAL '${pgTzInterval}')`;
+      } else if (period === "weekly") {
+        // date_trunc('week', ...) truncates to Monday 00:00 per ISO-8601
+        periodStartExpr = `(date_trunc('week', now() AT TIME ZONE INTERVAL '${pgTzInterval}') AT TIME ZONE INTERVAL '${pgTzInterval}')`;
+      } else {
+        // monthly
+        periodStartExpr = `(date_trunc('month', now() AT TIME ZONE INTERVAL '${pgTzInterval}') AT TIME ZONE INTERVAL '${pgTzInterval}')`;
+      }
+
       const rows = await db
         .select({
-          userId:     users.id,
+          userId:     gamePlayers.userId,
           username:   users.username,
           avatarId:   users.avatarId,
-          totalScore: userStats.totalScore,
-          totalGames: userStats.totalGames,
-          bestStreak: userStats.bestStreak,
+          totalScore: sql<number>`cast(sum(${gamePlayers.finalScore}) as int)`,
+          totalGames: sql<number>`cast(count(distinct ${gamePlayers.gameId}) as int)`,
+          bestStreak: sql<number>`cast(max(${gamePlayers.bestStreak}) as int)`,
         })
-        .from(userStats)
-        .innerJoin(users, eq(userStats.userId, users.id))
-        .orderBy(desc(userStats.totalScore))
+        .from(gamePlayers)
+        .innerJoin(games, eq(gamePlayers.gameId, games.id))
+        .innerJoin(users, eq(gamePlayers.userId, users.id))
+        .where(
+          sql`${gamePlayers.userId} is not null
+              and ${games.startedAt} >= ${sql.raw(periodStartExpr)}`
+        )
+        .groupBy(gamePlayers.userId, users.id)
+        .orderBy(desc(sql`sum(${gamePlayers.finalScore})`))
         .limit(50);
 
-      res.json({ leaderboard: rows });
+      res.json({ leaderboard: rows, period });
     } catch (err) {
       console.error("[api] /leaderboard/global error:", err);
       res.status(500).json({ error: "Internal error" });
@@ -283,6 +354,23 @@ export async function registerRoutes(
     } catch (err) {
       console.error("[api] /leaderboard/topic error:", err);
       res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // POST /api/player/avatar — save avatar for logged-in user
+  app.post("/api/player/avatar", async (req, res) => {
+    const userId = req.session?.userId;
+    if (!userId) { res.status(401).json({ error: "Not authenticated" }); return; }
+    const { avatarId } = req.body as { avatarId?: string };
+    if (!avatarId || typeof avatarId !== "string") {
+      res.status(400).json({ error: "avatarId required" }); return;
+    }
+    try {
+      await updateUserAvatar(userId, avatarId);
+      req.session.avatarId = avatarId;
+      req.session.save(() => res.json({ ok: true }));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update avatar" });
     }
   });
 

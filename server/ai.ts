@@ -560,7 +560,7 @@ function hasBeenServed(roomId: string, q: Question): boolean {
   return seen.has(questionFingerprint(q));
 }
 
-function markServed(roomId: string, q: Question): void {
+export function markServed(roomId: string, q: Question): void {
   if (!roomSeenQuestions.has(roomId)) roomSeenQuestions.set(roomId, new Map());
   const seen = roomSeenQuestions.get(roomId)!;
   seen.set(questionFingerprint(q), { addedAt: Date.now() });

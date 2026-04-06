@@ -37,73 +37,107 @@ function RankCell({ rank }: { rank: number }) {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
+type Period = "daily" | "weekly" | "monthly" | "alltime";
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: "daily",   label: "Today"    },
+  { key: "weekly",  label: "Week"     },
+  { key: "monthly", label: "Month"    },
+  { key: "alltime", label: "All Time" },
+];
+
 function GlobalLeaderboard({ currentUserId }: { currentUserId?: string }) {
-  const [rows, setRows] = useState<GlobalEntry[]>([]);
-  const [busy, setBusy] = useState(true);
+  const [period, setPeriod] = useState<Period>("alltime");
+  const [rows, setRows]     = useState<GlobalEntry[]>([]);
+  const [busy, setBusy]     = useState(true);
 
   useEffect(() => {
-    fetch("/api/leaderboard/global")
+    setBusy(true);
+    // Send the user's UTC offset (in minutes) so the server can compute
+    // calendar-aligned boundaries (midnight, week-start, month-start) in their
+    // local timezone rather than using rolling 24h/7d/30d windows.
+    const tzOffset = new Date().getTimezoneOffset(); // minutes behind UTC (negative = ahead)
+    fetch(`/api/leaderboard/global?period=${period}&tzOffset=${tzOffset}`)
       .then(r => r.json())
       .then(d => setRows(d.leaderboard ?? []))
       .catch(console.error)
       .finally(() => setBusy(false));
-  }, []);
+  }, [period]);
 
-  if (busy) {
-    return <div className="flex justify-center py-16 text-white/30 text-sm">Loading…</div>;
-  }
-
-  if (rows.length === 0) {
-    return (
-      <div className="text-center py-16 text-white/30">
-        <Globe className="w-10 h-10 mx-auto mb-3 opacity-20" />
-        <p className="text-sm font-semibold">No ranked players yet</p>
-        <p className="text-xs mt-1">Play a few games to appear here!</p>
-      </div>
-    );
-  }
+  const scoreLabel = period === "alltime" ? "pts total" : "pts this period";
 
   return (
-    <div className="space-y-2">
-      {rows.map((entry, i) => {
-        const isMe = entry.userId === currentUserId;
-        return (
-          <motion.div
-            key={entry.userId}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.03 }}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-colors ${
-              isMe
-                ? "bg-teal-500/15 border border-teal-400/30"
-                : i < 3
-                  ? "bg-white/8"
-                  : "bg-white/5 hover:bg-white/8"
+    <>
+      {/* Period pills */}
+      <div className="flex items-center gap-1.5 mb-4 p-1 rounded-xl bg-white/5 w-fit">
+        {PERIODS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setPeriod(key)}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              period === key
+                ? "bg-teal-500/25 border border-teal-400/40 text-teal-300"
+                : "text-white/40 hover:text-white/70"
             }`}
           >
-            <div className="w-7 flex items-center justify-center flex-shrink-0">
-              <RankCell rank={i + 1} />
-            </div>
-            <Avatar avatarId={entry.avatarId} mood="idle" streak={0} isLeader={i === 0} size={36} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className={`font-semibold text-sm truncate ${isMe ? "text-teal-300" : "text-white"}`}>
-                  {entry.username}
-                </span>
-                {isMe && <span className="text-[10px] text-teal-400 font-bold flex-shrink-0">(you)</span>}
-              </div>
-              <div className="text-white/30 text-xs">{entry.totalGames} games · {entry.bestStreak}🔥 best streak</div>
-            </div>
-            <div className="text-right flex-shrink-0">
-              <div className={`font-mono font-black text-base ${i === 0 ? "text-yellow-400" : "text-white"}`}>
-                {entry.totalScore.toLocaleString()}
-              </div>
-              <div className="text-white/30 text-[10px]">pts total</div>
-            </div>
-          </motion.div>
-        );
-      })}
-    </div>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {busy ? (
+        <div className="flex justify-center py-16 text-white/30 text-sm">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-center py-16 text-white/30">
+          <Globe className="w-10 h-10 mx-auto mb-3 opacity-20" />
+          <p className="text-sm font-semibold">No ranked players yet</p>
+          <p className="text-xs mt-1">
+            {period === "alltime" ? "Play a few games to appear here!" : "No games played in this period."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((entry, i) => {
+            const isMe = entry.userId === currentUserId;
+            return (
+              <motion.div
+                key={entry.userId}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-colors ${
+                  isMe
+                    ? "bg-teal-500/15 border border-teal-400/30"
+                    : i < 3
+                      ? "bg-white/8"
+                      : "bg-white/5 hover:bg-white/8"
+                }`}
+              >
+                <div className="w-7 flex items-center justify-center flex-shrink-0">
+                  <RankCell rank={i + 1} />
+                </div>
+                <Avatar avatarId={entry.avatarId} mood="idle" streak={0} isLeader={i === 0} size={36} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`font-semibold text-sm truncate ${isMe ? "text-teal-300" : "text-white"}`}>
+                      {entry.username}
+                    </span>
+                    {isMe && <span className="text-[10px] text-teal-400 font-bold flex-shrink-0">(you)</span>}
+                  </div>
+                  <div className="text-white/30 text-xs">{entry.totalGames} games · {entry.bestStreak}🔥 best streak</div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className={`font-mono font-black text-base ${i === 0 ? "text-yellow-400" : "text-white"}`}>
+                    {entry.totalScore.toLocaleString()}
+                  </div>
+                  <div className="text-white/30 text-[10px]">{scoreLabel}</div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -196,7 +230,7 @@ export default function Leaderboard() {
   const selectedTopicLabel = activeTab === "global" ? null : activeTab;
 
   return (
-    <div className="relative min-h-screen p-4 pb-10">
+    <div className="relative min-h-screen p-4 pb-24 md:pb-10">
       <ParticleBackground />
 
       <div className="relative z-10 max-w-2xl mx-auto">
@@ -209,7 +243,7 @@ export default function Leaderboard() {
         >
           <button
             onClick={() => setLocation("/")}
-            className="p-2 rounded-xl glass-panel text-white/50 hover:text-white transition-colors"
+            className="hidden md:flex p-2 rounded-xl glass-panel text-white/50 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -222,7 +256,7 @@ export default function Leaderboard() {
           {user && (
             <button
               onClick={() => setLocation("/dashboard")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel text-teal-400 hover:text-teal-300 text-xs font-semibold transition-colors border border-teal-400/20"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel text-teal-400 hover:text-teal-300 text-xs font-semibold transition-colors border border-teal-400/20"
             >
               <LayoutDashboard className="w-3.5 h-3.5" />Dashboard
             </button>
@@ -301,7 +335,7 @@ export default function Leaderboard() {
           {activeTab === "global" ? (
             <>
               <h2 className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5" />Top 50 — All Time Score
+                <Globe className="w-3.5 h-3.5" />Global Rankings
               </h2>
               <GlobalLeaderboard currentUserId={user?.id} />
             </>
