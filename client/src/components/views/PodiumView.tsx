@@ -110,6 +110,13 @@ export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStr
     setTimeout(() => playSound('notification'), 900);
   }, []);
 
+  // Push the rectangle ad when this view mounts
+  useEffect(() => {
+    try {
+      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+    } catch (_) {}
+  }, []);
+
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col items-center gap-4 pb-8 px-1" style={{ position: 'relative' }}>
       <Confetti />
@@ -200,6 +207,15 @@ export function PodiumView({ room, me, onPlayAgain, onLeave, topicStats, bestStr
 
       {/* Share result */}
       <ShareCard me={me} room={room} topicStats={topicStats} bestStreak={bestStreak} />
+
+      {/* ── Ad rectangle ── */}
+      <div className="flex justify-center my-1">
+        <ins className="adsbygoogle"
+          style={{ display: "inline-block", width: "300px", height: "250px" }}
+          data-ad-client="ca-pub-4551070722550073"
+          data-ad-slot="9964879330"
+        />
+      </div>
 
       {/* Action buttons */}
       <motion.div

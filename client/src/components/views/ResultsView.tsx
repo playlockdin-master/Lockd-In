@@ -29,6 +29,13 @@ export function ResultsView({ room, me }: Props) {
     // undefined = late joiner observer — no sound
   }, []);
 
+  // Push the banner ad when this view mounts
+  useEffect(() => {
+    try {
+      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+    } catch (_) {}
+  }, []);
+
   const TOTAL_TIME = 8000;
   const [barStyle, setBarStyle] = useState<React.CSSProperties>({ width: "100%" });
 
@@ -137,6 +144,15 @@ export function ResultsView({ room, me }: Props) {
 
       {/* ── Podium + list leaderboard ── */}
       <PodiumPanel sortedPlayers={sortedPlayers} me={me} />
+
+      {/* ── Ad banner ── */}
+      <div className="flex justify-center my-1">
+        <ins className="adsbygoogle"
+          style={{ display: "inline-block", width: "320px", height: "50px" }}
+          data-ad-client="ca-pub-4551070722550073"
+          data-ad-slot="2236666195"
+        />
+      </div>
 
       {/* ── Answer breakdown ── */}
       <AnswerPanel q={q} room={room} me={me} />
