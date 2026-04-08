@@ -12,6 +12,8 @@ import Dashboard from "@/pages/Dashboard";
 import Leaderboard from "@/pages/Leaderboard";
 import Profile from "@/pages/Profile";
 import UsernameSetup from "@/pages/UsernameSetup";
+import TermsOfService from "@/pages/TermsOfService";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
 
 function Router() {
   return (
@@ -23,6 +25,8 @@ function Router() {
       <Route path="/profile" component={Profile} />
       <Route path="/setup-username" component={UsernameSetup} />
       <Route path="/room/:code" component={GameRoom} />
+      <Route path="/terms" component={TermsOfService} />
+      <Route path="/privacy" component={PrivacyPolicy} />
       <Route component={NotFound} />
     </Switch>
   );

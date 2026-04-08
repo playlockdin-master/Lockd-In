@@ -328,6 +328,35 @@ export default function Home() {
           </div>
         </motion.div>
 
+        {/* Footer links */}
+        <motion.div
+          className="w-full mt-6 pb-2 flex items-center justify-center gap-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.7 }}
+        >
+          <button
+            onClick={() => setLocation("/privacy")}
+            className="text-white/30 hover:text-white/60 text-xs transition-colors"
+          >
+            Privacy Policy
+          </button>
+          <span className="text-white/15 text-xs">·</span>
+          <button
+            onClick={() => setLocation("/terms")}
+            className="text-white/30 hover:text-white/60 text-xs transition-colors"
+          >
+            Terms of Service
+          </button>
+          <span className="text-white/15 text-xs">·</span>
+          <a
+            href="mailto:qotionsupport@gmail.com"
+            className="text-white/30 hover:text-white/60 text-xs transition-colors"
+          >
+            Contact
+          </a>
+        </motion.div>
+
       </div>
     </div>
   );
