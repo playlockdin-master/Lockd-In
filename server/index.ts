@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import path from "path";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
@@ -16,6 +17,42 @@ app.set("trust proxy", 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// ── Static content routes (blog, sitemap, ads.txt) ────────────────────────────
+// These are served BEFORE the React catch-all so Google can crawl them as plain HTML.
+// In production the server runs from dist/index.cjs, so blog files live at dist/blog/
+// In dev they live at server/blog/ relative to cwd.
+const __blogDir = process.env.NODE_ENV === "production"
+  ? path.resolve(process.cwd(), "dist", "blog")
+  : path.resolve(process.cwd(), "server", "blog");
+
+// Guarantee ads.txt is always served at the correct path
+app.get("/ads.txt", (_req, res) => {
+  res.type("text/plain");
+  res.send("google.com, pub-4551070722550073, DIRECT, f08c47fec0942fa0");
+});
+
+// Sitemap
+app.get("/sitemap.xml", (_req, res) => {
+  res.type("application/xml");
+  res.sendFile(path.join(__blogDir, "sitemap.xml"));
+});
+
+// Blog index
+app.get("/blog", (_req, res) => {
+  res.sendFile(path.join(__blogDir, "index.html"));
+});
+
+// Blog articles
+app.get("/blog/how-to-host-a-trivia-night", (_req, res) => {
+  res.sendFile(path.join(__blogDir, "how-to-host-a-trivia-night.html"));
+});
+app.get("/blog/best-trivia-topics", (_req, res) => {
+  res.sendFile(path.join(__blogDir, "best-trivia-topics.html"));
+});
+app.get("/blog/how-ai-generates-quiz-questions", (_req, res) => {
+  res.sendFile(path.join(__blogDir, "how-ai-generates-quiz-questions.html"));
+});
 
 // ── Session store ─────────────────────────────────────────────────────────────
 const PgSession = connectPgSimple(session);

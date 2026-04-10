@@ -42,12 +42,7 @@ export default function Home() {
   const { playSound } = useAudioSystem();
   const { displayed: bubbleText, done: bubbleDone } = useTypewriter("Hey! Ready to challenge yourself? 🧠", 36);
 
-  // Push the home banner ad on mount
-  useEffect(() => {
-    try {
-      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-    } catch (_) {}
-  }, []);
+
 
   // Pre-fill nickname from logged-in user
   useEffect(() => {
@@ -333,20 +328,6 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </motion.div>
-
-        {/* Ad banner */}
-        <motion.div
-          className="w-full mt-4 flex justify-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.65 }}
-        >
-          <ins className="adsbygoogle"
-            style={{ display: "inline-block", width: "320px", height: "50px" }}
-            data-ad-client="ca-pub-4551070722550073"
-            data-ad-slot="2236666195"
-          />
         </motion.div>
 
         {/* Footer links */}

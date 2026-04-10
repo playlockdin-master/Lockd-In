@@ -11,4 +11,4 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
 [[services]]
-name = "flooq"
+name = "qotion"

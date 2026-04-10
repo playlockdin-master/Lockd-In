@@ -1,4 +1,4 @@
-# LOCKD-IN 🔒
+# Qotion 🎯
 
 A fast-paced AI-powered multiplayer trivia game. Players pick topics, an AI generates live questions, and everyone races to answer in 15 seconds.
 
@@ -56,8 +56,8 @@ In Railway, go to your service → **Variables** tab and add:
 ### Step 4 — Set your Public URL
 
 1. In Railway, go to your service → **Settings** → **Networking**
-2. Click **Generate Domain** — you'll get a URL like `qotion.up.railway.app`
-3. Go back to **Variables** and set `CLIENT_ORIGIN` to that full URL (e.g. `https://qotion.up.railway.app`)
+2. Click **Generate Domain** — set CLIENT_ORIGIN to your production domain (e.g. `https://qotion.online`)
+3. Go back to **Variables** and set `CLIENT_ORIGIN` to `https://qotion.online`
 4. Trigger a redeploy (Railway → your service → three dots → Redeploy)
 
 Your game is now live. Share the URL with friends.

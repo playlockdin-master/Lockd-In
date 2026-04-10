@@ -1,6 +1,7 @@
 User-agent: *
-Allow: /$
+Allow: /
 Disallow: /room/
 Disallow: /room/*
+Disallow: /api/
 
-Sitemap: https://flooq.up.railway.app/sitemap.xml
+Sitemap: https://qotion.online/sitemap.xml
