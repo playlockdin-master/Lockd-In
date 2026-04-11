@@ -110,7 +110,7 @@ export default function Dashboard() {
       fetch(`/api/player/${uid}/games`,  { credentials: "include" }).then(r => r.json()),
     ]).then(([s, t, g]) => {
       if (!s.error) setStats(s);
-      if (!t.error) setTopics(t.topics ?? []);
+      if (!t.error) setTopics((t.topics ?? []).slice(0, 10));
       if (!g.error) setGames(g.games ?? []);
     }).catch(console.error)
       .finally(() => setBusy(false));

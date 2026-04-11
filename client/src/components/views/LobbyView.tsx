@@ -253,7 +253,7 @@ export function LobbyView({ room, me, onReady, onStart, onUpdateSettings, onUpda
                         p.isReady ? (
                           <button
                             onClick={() => { onReady(false); playSound('click'); }}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-green-400/40 bg-green-400/10 text-green-400 text-xs font-semibold hover:bg-red-400/10 hover:border-red-400/40 hover:text-red-400 transition-all"
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-green-400/40 bg-green-400/10 text-green-400 text-xs font-semibold active:opacity-70 transition-all"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" /> Ready
                           </button>

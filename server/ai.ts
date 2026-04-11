@@ -798,6 +798,12 @@ export async function generateQuestion(
       return generateQuestion(topic, recentAngles, roomId, retries - 1, difficultyOverride, askedQuestions, regionContext, regionId);
     }
 
+    // Enforce difficulty override — if AI ignored the requested difficulty, stamp it on.
+    // This prevents the history from getting poisoned and fighting the player's selection.
+    if (difficultyOverride && validated.difficulty !== difficultyOverride) {
+      console.warn(`[difficulty] AI returned "${validated.difficulty}" but "${difficultyOverride}" was requested — overriding`);
+      validated.difficulty = difficultyOverride as typeof validated.difficulty;
+    }
     recordDifficulty(roomId, validated.difficulty);
     // (cache removed — question stored in DB via storeQuestion above)
     const shuffled = shuffleOptions(validated);

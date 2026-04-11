@@ -57,6 +57,13 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
     if (!isLoadingQuestion) setSubmitting(false);
   }, [isLoadingQuestion]);
 
+  // Reset submitting flag when server rejects the topic with an error.
+  // Run on every render while error is set — this fires even when the error
+  // string is identical across two consecutive rejections (same invalid topic).
+  useEffect(() => {
+    if (error) setSubmitting(false);
+  });
+
   // Delay autoFocus on touch devices to prevent iOS keyboard pushing timer off-screen
   useEffect(() => {
     if (!isMyTurn || isLoadingQuestion) return;
@@ -72,6 +79,7 @@ export function TopicSelectionView({ room, me, onSelectTopic, error, onClearErro
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!topic.trim() || !isMyTurn || submitting) return;
+    onClearError(); // clear previous error so the same rejection fires a fresh render
     setSubmitting(true);
     playSound('click');
     onSelectTopic(topic.trim(), difficulty);

@@ -22,7 +22,7 @@ import {
   generateQuestionsForPresetMode, markServed,
 } from "./ai";
 import {
-  fetchQuestionFromBank, fetchChooserSeenData,
+  fetchQuestionFromBank, fetchRoomSeenData,
   createGame, upsertGamePlayer, updateGamePlayerScore,
   finalizeGame, upsertUserStats, upsertUserTopicStats, updateQuestionStats,
 } from "./storage";
@@ -1195,21 +1195,28 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
 
   io.to(room.code).emit("gameState", serializeRoom(room));
 
-  // ── Fetch chooser's seen-question data for dedup (Options 2 + 3) ──────────
-  // The topic chooser is room.topicSelectorId. We look up their userId from
-  // room.players so we can query their personal seen_hashes from the DB.
-  // Guests (no userId) get null → DB fetch uses usage_count ordering only.
+  // ── Fetch all players' seen-question data for dedup (Options 2 + 3) ─────────
+  // Collect userIds for every logged-in player currently in the room.
+  // Guests (no userId) are excluded from the union — they get best-effort
+  // variety via usage_count ordering only.
+  // fetchRoomSeenData unions all their seen_hashes in a single DB query,
+  // so any question seen by ANY player is excluded — not just the chooser.
+  const loggedInUserIds = room.players
+    .map(p => p.userId)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
   const chooserPlayer = room.players.find(p => p.id === room.topicSelectorId);
   const chooserUserId = chooserPlayer?.userId ?? null;
-  const chooserSeen = chooserUserId
-    ? await fetchChooserSeenData(chooserUserId, topic).catch(() => undefined)
+
+  const roomSeen = loggedInUserIds.length > 0
+    ? await fetchRoomSeenData(loggedInUserIds, chooserUserId, topic).catch(() => undefined)
     : undefined;
 
   // Phase 3 — try DB question bank before calling AI
   let servedFromDb = false;
 
   try {
-    const dbQuestion = await fetchQuestionFromBank(topic, regionId, chooserSeen);
+    const dbQuestion = await fetchQuestionFromBank(topic, regionId, roomSeen);
     if (dbQuestion) {
       const liveRoom = rooms.get(room.code);
       if (!liveRoom || liveRoom.currentRound !== roundSnapshot || liveRoom.status !== 'question') {
@@ -1278,6 +1285,13 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     liveRoom.askedQuestions.push(question.text);
     if (question.canonicalTopic?.trim()) liveRoom.currentTopic = question.canonicalTopic.trim();
 
+    // Compute textHash immediately (same formula as storeQuestion) so it's
+    // available for roundHistory regardless of when storePromise resolves.
+    // If we wait for storePromise.then the question timer may fire first and
+    // proceedToResults will clear currentQuestionTextHash before it's ever set.
+    const normalisedText = question.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+    liveRoom.currentQuestionTextHash = crypto.createHash('md5').update(normalisedText).digest('hex');
+
     // Freeze participants — immutable for this question's lifetime
     liveRoom.questionParticipants = liveRoom.players.map(p => p.id);
     liveRoom.roundPlayerIds       = [...liveRoom.questionParticipants];
@@ -1287,15 +1301,12 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
     // Timer runs to completion
     setRoomTimer(room.code, () => { proceedToResults(liveRoom, io); }, questionTimeMs(liveRoom));
 
-    // Capture DB id + textHash once storeQuestion resolves
+    // Capture DB id once storeQuestion resolves (fire-and-forget, never blocks serving)
     storePromise.then(dbId => {
       if (!dbId) return;
       const r = rooms.get(room.code);
       if (r && r.currentRound === roundSnapshot && r.status === 'question') {
         r.currentQuestionDbId = dbId;
-        // textHash for AI questions: compute same way storeQuestion does
-        const normalised = question.text.toLowerCase().replace(/[^a-z0-9]/g, '');
-        r.currentQuestionTextHash = crypto.createHash('md5').update(normalised).digest('hex');
       }
     });
 
@@ -1347,6 +1358,10 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
         afterGen.questionParticipants = afterGen.players.map(p => p.id);
         afterGen.roundPlayerIds       = [...afterGen.questionParticipants];
 
+        // Compute textHash immediately — same race condition fix as primary AI path
+        const normalisedQ2 = q2.text.toLowerCase().replace(/[^a-z0-9]/g, '');
+        afterGen.currentQuestionTextHash = crypto.createHash('md5').update(normalisedQ2).digest('hex');
+
         io.to(room.code).emit("gameState", serializeRoom(afterGen));
         setRoomTimer(room.code, () => { proceedToResults(afterGen, io); }, questionTimeMs(afterGen));
 
@@ -1355,8 +1370,6 @@ async function proceedToQuestion(room: Room, io: Server, topic: string, difficul
           const r = rooms.get(room.code);
           if (r && r.currentRound === roundSnapshot && r.status === 'question') {
             r.currentQuestionDbId = dbId;
-            const normalised2 = q2.text.toLowerCase().replace(/[^a-z0-9]/g, '');
-            r.currentQuestionTextHash = crypto.createHash('md5').update(normalised2).digest('hex');
           }
         });
       } catch (innerErr) {
@@ -1388,10 +1401,10 @@ function proceedToResults(room: Room, io: Server) {
   room.status          = "results";
   room.resultsDeadline = Date.now() + ROUND_RESULTS_TIME;
 
-  const correctIndex   = room.currentQuestion.correctIndex;
+  const correctIndex   = room.currentQuestion!.correctIndex;
   const diffMultiplier =
-    room.currentQuestion.difficulty === "Hard"   ? 1.2 :
-    room.currentQuestion.difficulty === "Medium" ? 1.1 : 1.0;
+    room.currentQuestion!.difficulty === "Hard"   ? 1.2 :
+    room.currentQuestion!.difficulty === "Medium" ? 1.1 : 1.0;
 
   let fastestTime = -1;
   let fastestId: string | undefined;
@@ -1571,28 +1584,37 @@ function endGame(room: Room, io: Server) {
 
       for (const round of room.roundHistory) {
         const answerIndex = round.playerAnswers[p.id];
-        // -2 = absent late-joiner; -1 = timed out; anything else is a real answer
+        // -2 = absent late-joiner (joined after question started) — skip entirely
         if (answerIndex === undefined || answerIndex === -2) continue;
+
+        // Always initialise the tally entry for this topic first, regardless of
+        // whether we have a textHash. Doing it inside `if (textHash)` caused a
+        // crash on `topicTally[round.topic].answered++` when textHash was null.
+        if (!topicTally[round.topic]) {
+          topicTally[round.topic] = { answered: 0, correct: 0 };
+        }
+
+        // Option 2 + 3: record question hash — player was present (answered,
+        // timed out, or wrong) so this question should be excluded in future games.
+        if (round.questionTextHash) {
+          if (!newSeenHashes.includes(round.questionTextHash)) {
+            newSeenHashes.push(round.questionTextHash);
+          }
+          // Option 3: last hash seen for this topic (last round wins)
+          topicTally[round.topic].lastSeenHash = round.questionTextHash;
+        }
 
         totalAnswered++;
         const isCorrect = answerIndex === round.correctIndex && answerIndex >= 0;
         if (isCorrect) totalCorrect++;
 
-        if (!topicTally[round.topic]) topicTally[round.topic] = { answered: 0, correct: 0 };
         topicTally[round.topic].answered++;
         if (isCorrect) topicTally[round.topic].correct++;
-
-        // Option 3: track last hash per topic (overwrite each round — last one wins)
-        if (round.questionTextHash) {
-          topicTally[round.topic].lastSeenHash = round.questionTextHash;
-          // Option 2: add to rolling window (dedup in case same hash appears twice)
-          if (!newSeenHashes.includes(round.questionTextHash)) {
-            newSeenHashes.push(round.questionTextHash);
-          }
-        }
       }
 
-      if (totalAnswered > 0) {
+      // Write seen_hashes even if totalAnswered = 0 (player timed out every round
+      // but still SAW the questions — they should be excluded next game).
+      if (newSeenHashes.length > 0 || totalAnswered > 0) {
         upsertUserStats(userId, {
           totalCorrect,
           totalAnswered,

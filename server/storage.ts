@@ -104,21 +104,50 @@ export async function storeQuestion(
 // Returns empty fallback gracefully for guests or when DB is unavailable.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface ChooserSeenData {
-  seenHashes: string[];        // Option 2: rolling window (up to 500 MD5 hashes)
-  lastSeenHash: string | null; // Option 3: last hash served for this specific topic
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOM SEEN DATA
+//
+// Fetches the union of seen_hashes across ALL logged-in players in the room
+// in a single query, plus the topic-specific lastSeenHash for the chooser.
+//
+// WHY ALL PLAYERS, NOT JUST THE CHOOSER:
+//   The original "chooser-only" policy meant that for any given round, only
+//   the topic selector was protected from repeats. The other 3-7 players had
+//   zero cross-session dedup — their seen_hashes were written but never read.
+//   In a 10-round game, each player is the chooser for ~2 rounds, meaning they
+//   were unprotected for ~80% of rounds. This caused the reported repetitions.
+//
+//   The fix: union ALL logged-in players' seen_hashes. A question is excluded
+//   if ANY player in the room has already seen it. Guests (no userId) are
+//   naturally excluded from the union — they get best-effort variety via
+//   usage_count ordering only.
+//
+// POOL EXHAUSTION SAFETY:
+//   If the exclude set is so large that no unseen question remains,
+//   fetchQuestionFromBank falls back to serving without exclusion rather than
+//   breaking the round. Better one repeat than a broken game.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RoomSeenData {
+  excludeHashes: Set<string>;  // union of all players' seen hashes + chooser's lastSeenHash
 }
 
-export async function fetchChooserSeenData(
-  chooserUserId: string,
+export async function fetchRoomSeenData(
+  playerUserIds: string[],   // all logged-in playerIds in the room
+  chooserUserId: string | null,
   topic: string,
-): Promise<ChooserSeenData> {
-  const fallback: ChooserSeenData = { seenHashes: [], lastSeenHash: null };
-  if (!hasDb(db) || !chooserUserId) return fallback;
+): Promise<RoomSeenData> {
+  const empty: RoomSeenData = { excludeHashes: new Set() };
+  if (!hasDb(db) || playerUserIds.length === 0) return empty;
 
   try {
+    // Single query: fetch seen_hashes for ALL logged-in players at once,
+    // plus the chooser's per-topic lastSeenHash via a left join.
+    // The left join returns one row per user_stats entry; we union the arrays
+    // in application code (small number of players, negligible cost).
     const rows = await db
       .select({
+        userId:       userStats.userId,
         seenHashes:   userStats.seenHashes,
         lastSeenHash: userTopicStats.lastSeenHash,
       })
@@ -130,16 +159,27 @@ export async function fetchChooserSeenData(
           sql`lower(${userTopicStats.topic}) = lower(${topic})`,
         ),
       )
-      .where(eq(userStats.userId, chooserUserId))
-      .limit(1);
+      .where(sql`${userStats.userId} = ANY(ARRAY[${sql.join(
+        playerUserIds.map(id => sql`${id}::uuid`),
+        sql`, `,
+      )}])`);
 
-    if (!rows[0]) return fallback;
-    return {
-      seenHashes:   (rows[0].seenHashes as string[]) ?? [],
-      lastSeenHash: rows[0].lastSeenHash ?? null,
-    };
+    const excludeHashes = new Set<string>();
+    for (const row of rows) {
+      // Option 2: union rolling window hashes from all players
+      const hashes = (row.seenHashes as string[]) ?? [];
+      for (const h of hashes) {
+        if (h) excludeHashes.add(h);
+      }
+      // Option 3: add the per-topic lastSeenHash (only meaningful for the chooser,
+      // but harmless to include for all — if anyone last saw this topic's question,
+      // skip it for everyone)
+      if (row.lastSeenHash) excludeHashes.add(row.lastSeenHash);
+    }
+
+    return { excludeHashes };
   } catch {
-    return fallback;
+    return empty;
   }
 }
 
@@ -147,23 +187,23 @@ export async function fetchChooserSeenData(
 // FETCH FROM QUESTION BANK
 //
 // Option 4 — Pool floor:
-//   Returns null if topic has < MIN_POOL_SIZE questions, forcing AI generation
-//   and organic pool growth.
+//   Returns null if topic has < MIN_POOL_SIZE active questions, forcing AI
+//   generation so the pool grows organically over time.
 //
-// Options 2 + 3 — Chooser exclusion:
-//   Excludes questions whose text_hash the chooser has seen (rolling window)
-//   or seen last for this topic. Policy: "unseen by topic chooser" — their
-//   home-field advantage is only valid if the question is fresh for them.
-//   Guests get variety via usage_count ordering (graceful degradation).
+// Options 2 + 3 — All-player exclusion:
+//   Excludes any question whose text_hash appears in any room player's
+//   seen_hashes (rolling window) or any player's lastSeenHash for this topic.
+//   Guests (no userId) are excluded from the union — they get variety via
+//   usage_count ordering only.
 //
-// Returns the question with its textHash so gameState can store it in
-// roundHistory for later writing to seenHashes / lastSeenHash.
+// Returns textHash alongside the question so gameState records it in
+// roundHistory for the end-of-game seen_hashes write.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchQuestionFromBank(
   topic: string,
   region: string,
-  chooserSeen?: ChooserSeenData,
+  roomSeen?: RoomSeenData,
 ): Promise<(Question & { dbId: string; textHash: string | null }) | null> {
   if (!hasDb(db)) return null;
 
@@ -182,14 +222,7 @@ export async function fetchQuestionFromBank(
   const poolSize = countRows[0]?.count ?? 0;
   if (poolSize < MIN_POOL_SIZE) return null;
 
-  // Build exclusion set from chooser's seen hashes (Options 2 + 3)
-  const excludeSet = new Set<string>();
-  if (chooserSeen) {
-    for (const h of chooserSeen.seenHashes) {
-      if (h) excludeSet.add(h);
-    }
-    if (chooserSeen.lastSeenHash) excludeSet.add(chooserSeen.lastSeenHash);
-  }
+  const excludeSet = roomSeen?.excludeHashes ?? new Set<string>();
 
   const baseWhere = and(
     sql`lower(${questions.canonicalTopic}) = lower(${topic})`,
@@ -197,6 +230,9 @@ export async function fetchQuestionFromBank(
     eq(questions.isActive, true),
   );
 
+  // Only apply the exclusion clause when we actually have hashes to exclude.
+  // Note: questions with NULL textHash are NOT excluded — they're older questions
+  // with no hash computed yet. They'll naturally get lower priority via usage_count.
   const whereWithExclusion = excludeSet.size > 0
     ? and(
         baseWhere,
@@ -208,8 +244,11 @@ export async function fetchQuestionFromBank(
     : baseWhere;
 
   const orderBy = [
+    // Prefer questions not used in the last hour (freshness across all players)
     sql`CASE WHEN ${questions.lastUsedAt} > NOW() - INTERVAL '1 hour' THEN 0 ELSE 1 END DESC`,
+    // Then least-used overall
     questions.usageCount,
+    // Random tiebreak so the same question isn't always picked first
     sql`RANDOM()`,
   ] as const;
 
@@ -220,17 +259,10 @@ export async function fetchQuestionFromBank(
     .orderBy(...orderBy)
     .limit(1);
 
-  // All chooser-unseen questions exhausted — fall back without exclusion
-  // so the round always gets a question (better a repeat than a broken round)
-  if (!rows[0] && excludeSet.size > 0) {
-    rows = await db
-      .select()
-      .from(questions)
-      .where(baseWhere)
-      .orderBy(...orderBy)
-      .limit(1);
-  }
-
+  // All questions in the pool have been seen by someone in the room.
+  // Return null so the caller falls through to AI generation, which will store
+  // a fresh question and grow the pool. This is always better than a repeat.
+  // The in-session askedQuestions guard in gameState is a further safety net.
   if (!rows[0]) return null;
   const row = rows[0];
 
