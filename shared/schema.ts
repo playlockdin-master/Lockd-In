@@ -33,12 +33,15 @@ export const questions = pgTable('questions', {
   lastUsedAt:   timestamp('last_used_at'),
   qualityScore: real('quality_score').notNull().default(0.5),
   textHash:     text('text_hash'),
+  semanticHash: text('semantic_hash'),               // MD5(normalised_text + "|" + normalised_answer)
   totalServed:  integer('total_served').notNull().default(0),
   totalCorrect: integer('total_correct').notNull().default(0),
 }, t => ({
-  topicIdx:      index('questions_topic_idx').on(t.canonicalTopic),
-  regionIdx:     index('questions_region_idx').on(t.region),
-  topicHashUniq: uniqueIndex('questions_topic_hash_uniq').on(t.canonicalTopic, t.textHash),
+  topicIdx:          index('questions_topic_idx').on(t.canonicalTopic),
+  regionIdx:         index('questions_region_idx').on(t.region),
+  // Replaced text-only hash with semantic hash (text + correct answer) so that
+  // re-generated questions with different options but the same answer are deduplicated.
+  topicSemanticUniq: uniqueIndex('questions_topic_semantic_uniq').on(t.canonicalTopic, t.semanticHash),
 }));
 
 export const games = pgTable('games', {

@@ -63,15 +63,27 @@ export async function storeQuestion(
 ): Promise<string> {
   if (!hasDb(db)) return "";
 
+  // textHash — MD5 of normalised question text only (kept for backward compat
+  // with seen_hashes rolling window which references it).
   const normalised = q.text.toLowerCase().replace(/[^a-z0-9]/g, '');
   const textHash = crypto.createHash('md5').update(normalised).digest('hex');
 
+  // semanticHash — MD5 of normalised question text + "|" + normalised correct answer.
+  // This is the dedup key. Two questions that ask the same thing and share the
+  // same correct answer produce the same hash, even if:
+  //   • the wording is slightly different ("Which planet…" vs "What planet…")
+  //   • the distractor options are completely different
+  // The unique index (canonical_topic, semantic_hash) silently drops the
+  // duplicate via ON CONFLICT DO NOTHING.
+  const normalisedAnswer = (q.options[q.correctIndex] ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  const semanticHash = crypto
+    .createHash('md5')
+    .update(normalised + '|' + normalisedAnswer)
+    .digest('hex');
+
   // Bug 4 fix: normalize canonicalTopic to Title Case before storing.
-  // AI providers return inconsistent casing ("physics", "Physics", "General Physics").
-  // The unique index on (canonical_topic, text_hash) is case-sensitive, so without
-  // normalization "physics" and "Physics" are different keys and duplicate questions
-  // can be stored under different casings. Normalization here + lower() in fetch queries
-  // ensures a consistent single key per topic across all providers.
   const rawCanonical = (q.canonicalTopic ?? rawTopic).trim();
   const canonicalTopic = rawCanonical.replace(/\w\S*/g, w =>
     w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
@@ -90,6 +102,7 @@ export async function storeQuestion(
       region,
       isActive:       true,
       textHash,
+      semanticHash,
     })
     .onConflictDoNothing()
     .returning({ id: questions.id });

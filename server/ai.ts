@@ -451,6 +451,48 @@ Fast recall only. Insider advantage. JSON only.`;
 }
 
 // ---------------------------------------------------------------------------
+// POST-GENERATION NORMALISATION
+// Fixes inconsistent casing, spacing, and punctuation that AI models sometimes
+// produce — regardless of which provider answered.
+// ---------------------------------------------------------------------------
+
+function fixSpacing(s: string): string {
+  return s
+    .replace(/\s+/g, " ")               // collapse multiple spaces / tabs
+    .replace(/ ([,;:.!?])/g, "$1")      // remove space before punctuation
+    .replace(/([,;:])(?=[^\s])/g, "$1 ")// ensure space after punctuation
+    .trim();
+}
+
+function sentenceCase(s: string): string {
+  if (!s) return s;
+  const trimmed = fixSpacing(s);
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function normalizeOptions(options: string[]): string[] {
+  return options.map((o) => {
+    const fixed = fixSpacing(o);
+    // Title-case single-word options; sentence-case multi-word options
+    const words = fixed.split(" ");
+    if (words.length === 1) {
+      return fixed.charAt(0).toUpperCase() + fixed.slice(1);
+    }
+    return sentenceCase(fixed);
+  });
+}
+
+function normalizeQuestion(q: z.infer<typeof QuestionResponseSchema>): z.infer<typeof QuestionResponseSchema> {
+  return {
+    ...q,
+    text:           sentenceCase(q.text),
+    options:        normalizeOptions(q.options),
+    explanation:    sentenceCase(q.explanation),
+    canonicalTopic: q.canonicalTopic.trim(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // POST-GENERATION VALIDATION
 // ---------------------------------------------------------------------------
 
@@ -575,7 +617,13 @@ const FALLBACK_POOL: Question[] = [
 ];
 
 function getRandomFallback(): Question {
-  return FALLBACK_POOL[Math.floor(Math.random() * FALLBACK_POOL.length)];
+  const q = FALLBACK_POOL[Math.floor(Math.random() * FALLBACK_POOL.length)];
+  return {
+    ...q,
+    text:        sentenceCase(q.text),
+    options:     normalizeOptions(q.options),
+    explanation: sentenceCase(q.explanation),
+  };
 }
 
 
@@ -785,7 +833,7 @@ export async function generateQuestion(
       throw makeNoTriviaError(parsed.reason || "That topic can't be used for trivia.");
     }
 
-    const validated = QuestionResponseSchema.parse(parsed);
+    const validated = normalizeQuestion(QuestionResponseSchema.parse(parsed));
     validateQuestion(validated);
 
     // Extra dedup check — if this question text was already asked this game, retry
